@@ -1,0 +1,38 @@
+# Build output
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+Testing/
+*.dir/
+
+# Compiled output
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.so
+*.dylib
+engine
+test_*
+
+# Protobuf generated (keep .proto, ignore generated .pb.cc/.pb.h)
+*.pb.cc
+*.pb.h
+*.pb-c.c
+*.pb-c.h
