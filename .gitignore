@@ -4,3 +4,9 @@
 # IDE
 .vscode/
 .idea/
+
+# C# / .NET build artifacts
+**/bin/
+**/obj/
+*.user
+*.suo

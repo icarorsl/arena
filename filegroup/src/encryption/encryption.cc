@@ -1,239 +1,161 @@
 #include "encryption/encryption.h"
+
 #include <openssl/evp.h>
-#include <openssl/rand.h>
-#include <openssl/kdf.h>
-#include <stdexcept>
+#include <openssl/sha.h>
 #include <cstring>
+#include <stdexcept>
 
 namespace filegroup {
 
-// Default salt for PBKDF2 (128 bits)
-const uint8_t DEFAULT_SALT[] = {
-    0x50, 0x68, 0x61, 0x73, 0x65, 0x31, 0x46, 0x69,
-    0x6c, 0x65, 0x47, 0x72, 0x6f, 0x75, 0x70, 0x00
-};
-const size_t DEFAULT_SALT_SIZE = sizeof(DEFAULT_SALT);
+// ============================================================================
+// Nonce Derivation
+// ============================================================================
 
-std::string derive_key(
-    const std::string& passphrase,
-    const std::string& salt,
-    uint32_t iterations) {
-    
-    if (passphrase.empty()) {
-        throw std::runtime_error("passphrase is empty");
-    }
-    
-    uint8_t key_buffer[AES256_KEY_SIZE];
-    
-    // Use provided salt or default
-    const uint8_t* salt_ptr = DEFAULT_SALT;
-    size_t salt_len = DEFAULT_SALT_SIZE;
-    
-    if (!salt.empty()) {
-        salt_ptr = reinterpret_cast<const uint8_t*>(salt.data());
-        salt_len = salt.size();
-    }
-    
-    // PBKDF2-SHA256
-    int rc = PKCS5_PBKDF2_HMAC(
-        passphrase.data(),
-        passphrase.size(),
-        salt_ptr,
-        salt_len,
-        iterations,
-        EVP_sha256(),
-        AES256_KEY_SIZE,
-        key_buffer
-    );
-    
-    if (rc != 1) {
-        throw std::runtime_error("PBKDF2 key derivation failed");
-    }
-    
-    return std::string(reinterpret_cast<const char*>(key_buffer), AES256_KEY_SIZE);
+std::array<uint8_t, AES256_NONCE_SIZE> derive_nonce(
+    uint64_t file_id, uint32_t chunk_index, uint32_t group_id) {
+
+    // Build input: file_id (8 bytes LE) || chunk_index (4 bytes LE) || group_id (4 bytes LE)
+    uint8_t input[16];
+    std::memcpy(input, &file_id, 8);
+    std::memcpy(input + 8, &chunk_index, 4);
+    std::memcpy(input + 12, &group_id, 4);
+
+    // SHA-256 hash
+    uint8_t hash[SHA256_DIGEST_LENGTH];
+    SHA256(input, sizeof(input), hash);
+
+    // Use first 12 bytes as nonce
+    std::array<uint8_t, AES256_NONCE_SIZE> nonce;
+    std::memcpy(nonce.data(), hash, AES256_NONCE_SIZE);
+    return nonce;
 }
 
-std::string generate_iv() {
-    uint8_t iv_buffer[AES256_IV_SIZE];
-    
-    if (RAND_bytes(iv_buffer, AES256_IV_SIZE) != 1) {
-        throw std::runtime_error("Failed to generate random IV");
-    }
-    
-    return std::string(reinterpret_cast<const char*>(iv_buffer), AES256_IV_SIZE);
-}
+// ============================================================================
+// AES-256-GCM Encrypt
+// ============================================================================
 
-std::string encrypt(
-    const std::string& plaintext,
-    const std::string& key,
-    const std::string& additional_data) {
-    
-    if (key.size() != AES256_KEY_SIZE) {
-        throw std::runtime_error("key size must be " + std::to_string(AES256_KEY_SIZE) + " bytes");
-    }
-    
-    // Generate random IV
-    std::string iv = generate_iv();
-    
+std::vector<uint8_t> encrypt_chunk(
+    const uint8_t* key,
+    const std::array<uint8_t, AES256_NONCE_SIZE>& nonce,
+    const uint8_t* plaintext, size_t plaintext_len) {
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) {
-        throw std::runtime_error("Failed to create cipher context");
-    }
-    
-    try {
-        // Initialize encryption
-        if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, 
-                              reinterpret_cast<const uint8_t*>(key.data()),
-                              reinterpret_cast<const uint8_t*>(iv.data())) != 1) {
-            throw std::runtime_error("EVP_EncryptInit_ex failed");
-        }
-        
-        // Process additional data if provided
-        if (!additional_data.empty()) {
-            int len = 0;
-            if (EVP_EncryptUpdate(ctx, nullptr, &len,
-                                 reinterpret_cast<const uint8_t*>(additional_data.data()),
-                                 additional_data.size()) != 1) {
-                throw std::runtime_error("Failed to process additional data");
-            }
-        }
-        
-        // Encrypt plaintext
-        int ciphertext_len = 0;
-        std::vector<uint8_t> ciphertext_buffer(plaintext.size() + EVP_MAX_BLOCK_LENGTH);
-        
-        if (EVP_EncryptUpdate(ctx, ciphertext_buffer.data(), &ciphertext_len,
-                             reinterpret_cast<const uint8_t*>(plaintext.data()),
-                             plaintext.size()) != 1) {
-            throw std::runtime_error("EVP_EncryptUpdate failed");
-        }
-        
-        // Finalize
-        int final_len = 0;
-        if (EVP_EncryptFinal_ex(ctx, ciphertext_buffer.data() + ciphertext_len, &final_len) != 1) {
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
-        }
-        ciphertext_len += final_len;
-        
-        // Get authentication tag
-        uint8_t tag_buffer[AES256_TAG_SIZE];
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, AES256_TAG_SIZE, tag_buffer) != 1) {
-            throw std::runtime_error("Failed to get authentication tag");
-        }
-        
-        // Build output: IV || tag || ciphertext
-        std::string result;
-        result.reserve(iv.size() + AES256_TAG_SIZE + ciphertext_len);
-        result.append(iv);
-        result.append(reinterpret_cast<const char*>(tag_buffer), AES256_TAG_SIZE);
-        result.append(reinterpret_cast<const char*>(ciphertext_buffer.data()), ciphertext_len);
-        
-        return result;
-        
-    } catch (...) {
+    if (!ctx) throw std::runtime_error("Failed to create cipher context");
+
+    // Initialize encryption with AES-256-GCM
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        throw;
+        throw std::runtime_error("EVP_EncryptInit_ex failed");
     }
-    
+
+    // Set IV (nonce) length to 12 bytes
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, AES256_NONCE_SIZE, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to set GCM IV length");
+    }
+
+    // Set key and nonce
+    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr, key, nonce.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to set key and IV");
+    }
+
+    // Allocate output: ciphertext + 16-byte tag
+    std::vector<uint8_t> output(plaintext_len + AES256_TAG_SIZE);
+
+    // Encrypt
+    int out_len = 0;
+    if (EVP_EncryptUpdate(ctx, output.data(), &out_len, plaintext, static_cast<int>(plaintext_len)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("EVP_EncryptUpdate failed");
+    }
+
+    int total_len = out_len;
+
+    // Finalize — writes nothing extra for GCM stream, but needed to flush
+    if (EVP_EncryptFinal_ex(ctx, output.data() + total_len, &out_len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("EVP_EncryptFinal_ex failed");
+    }
+    total_len += out_len;
+
+    // Get the 16-byte GCM auth tag and append it after ciphertext
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, AES256_TAG_SIZE,
+                              output.data() + total_len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to get GCM tag");
+    }
+
     EVP_CIPHER_CTX_free(ctx);
+    return output; // ciphertext + tag (same as total_len + 16)
 }
 
-std::string decrypt(
-    const std::string& ciphertext,
-    const std::string& key,
-    const std::string& additional_data) {
-    
-    if (key.size() != AES256_KEY_SIZE) {
-        throw std::runtime_error("key size must be " + std::to_string(AES256_KEY_SIZE) + " bytes");
+// ============================================================================
+// AES-256-GCM Decrypt
+// ============================================================================
+
+std::vector<uint8_t> decrypt_chunk(
+    const uint8_t* key,
+    const std::array<uint8_t, AES256_NONCE_SIZE>& nonce,
+    const uint8_t* ciphertext_with_tag, size_t total_len) {
+
+    if (total_len < AES256_TAG_SIZE) {
+        throw std::runtime_error("Ciphertext too short: missing auth tag");
     }
-    
-    if (ciphertext.size() < AES256_IV_SIZE + AES256_TAG_SIZE) {
-        throw std::runtime_error("ciphertext too short (must have IV + tag)");
-    }
-    
-    // Extract IV, tag, and encrypted data
-    const std::string iv = ciphertext.substr(0, AES256_IV_SIZE);
-    const std::string tag = ciphertext.substr(AES256_IV_SIZE, AES256_TAG_SIZE);
-    const std::string encrypted = ciphertext.substr(AES256_IV_SIZE + AES256_TAG_SIZE);
-    
+
+    size_t ciphertext_len = total_len - AES256_TAG_SIZE;
+    const uint8_t* tag = ciphertext_with_tag + ciphertext_len;
+
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
-    if (!ctx) {
-        throw std::runtime_error("Failed to create cipher context");
-    }
-    
-    try {
-        // Initialize decryption
-        if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr,
-                              reinterpret_cast<const uint8_t*>(key.data()),
-                              reinterpret_cast<const uint8_t*>(iv.data())) != 1) {
-            throw std::runtime_error("EVP_DecryptInit_ex failed");
-        }
-        
-        // Process additional data if provided
-        if (!additional_data.empty()) {
-            int len = 0;
-            if (EVP_DecryptUpdate(ctx, nullptr, &len,
-                                 reinterpret_cast<const uint8_t*>(additional_data.data()),
-                                 additional_data.size()) != 1) {
-                throw std::runtime_error("Failed to process additional data");
-            }
-        }
-        
-        // Set authentication tag before decryption
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, AES256_TAG_SIZE,
-                               const_cast<char*>(tag.data())) != 1) {
-            throw std::runtime_error("Failed to set authentication tag");
-        }
-        
-        // Decrypt ciphertext
-        int plaintext_len = 0;
-        std::vector<uint8_t> plaintext_buffer(encrypted.size() + EVP_MAX_BLOCK_LENGTH);
-        
-        if (EVP_DecryptUpdate(ctx, plaintext_buffer.data(), &plaintext_len,
-                             reinterpret_cast<const uint8_t*>(encrypted.data()),
-                             encrypted.size()) != 1) {
-            throw std::runtime_error("EVP_DecryptUpdate failed");
-        }
-        
-        // Finalize (verifies tag)
-        int final_len = 0;
-        if (EVP_DecryptFinal_ex(ctx, plaintext_buffer.data() + plaintext_len, &final_len) != 1) {
-            throw std::runtime_error("Decryption failed: authentication tag mismatch or corrupted data");
-        }
-        plaintext_len += final_len;
-        
-        std::string result(reinterpret_cast<const char*>(plaintext_buffer.data()), plaintext_len);
-        return result;
-        
-    } catch (...) {
+    if (!ctx) throw std::runtime_error("Failed to create cipher context");
+
+    // Initialize decryption
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        throw;
+        throw std::runtime_error("EVP_DecryptInit_ex failed");
     }
-    
+
+    // Set IV length
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, AES256_NONCE_SIZE, nullptr) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to set GCM IV length");
+    }
+
+    // Set key and nonce
+    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr, key, nonce.data()) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to set key and IV");
+    }
+
+    // Set the expected auth tag BEFORE decryption (critical for GCM verification)
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, AES256_TAG_SIZE,
+                              const_cast<uint8_t*>(tag)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("Failed to set GCM tag");
+    }
+
+    // Decrypt
+    std::vector<uint8_t> plaintext(ciphertext_len);
+    int out_len = 0;
+    if (EVP_DecryptUpdate(ctx, plaintext.data(), &out_len, ciphertext_with_tag,
+                           static_cast<int>(ciphertext_len)) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("EVP_DecryptUpdate failed");
+    }
+
+    int total_out = out_len;
+
+    // Finalize — this is where GCM auth tag verification happens
+    if (EVP_DecryptFinal_ex(ctx, plaintext.data() + total_out, &out_len) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        throw std::runtime_error("GCM authentication failed: tag mismatch or data corruption");
+    }
+
+    total_out += out_len;
+    plaintext.resize(total_out);
+
     EVP_CIPHER_CTX_free(ctx);
-}
-
-size_t encrypt_to_buffer(
-    const std::string& plaintext,
-    const std::string& key,
-    std::vector<uint8_t>& output,
-    const std::string& additional_data) {
-    
-    std::string encrypted = encrypt(plaintext, key, additional_data);
-    output.assign(encrypted.begin(), encrypted.end());
-    return output.size();
-}
-
-size_t decrypt_from_buffer(
-    const std::vector<uint8_t>& ciphertext,
-    const std::string& key,
-    std::vector<uint8_t>& output,
-    const std::string& additional_data) {
-    
-    std::string ciphertext_str(ciphertext.begin(), ciphertext.end());
-    std::string decrypted = decrypt(ciphertext_str, key, additional_data);
-    output.assign(decrypted.begin(), decrypted.end());
-    return output.size();
+    return plaintext;
 }
 
 }  // namespace filegroup

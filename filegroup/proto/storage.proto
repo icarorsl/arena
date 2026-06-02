@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package filegroup.storage;
+
+option go_package = "github.com/filegroup/proto/storage";
+
+// ============================================================================
+// Storage Node Service — Internal: Engine → Storage nodes
+// mTLS-secured. Handles chunk persistence on storage nodes.
+// ============================================================================
+
+service StorageNode {
+    // Store a chunk on this node (primary or replica)
+    rpc StoreChunk(StoreChunkRequest) returns (StoreChunkResponse);
+
+    // Fetch a chunk from this node
+    rpc FetchChunk(FetchChunkRequest) returns (FetchChunkResponse);
+
+    // Delete a chunk from this node
+    rpc DeleteChunk(DeleteChunkRequest) returns (DeleteChunkResponse);
+
+    // Delete an entire page segment file
+    rpc DeletePage(DeletePageRequest) returns (DeletePageResponse);
+
+    // Health check
+    rpc Ping(PingRequest) returns (PingResponse);
+
+    // Report local segment inventory (for recovery)
+    rpc ReportSegments(ReportSegmentsRequest) returns (ReportSegmentsResponse);
+}
+
+// ============================================================================
+// StoreChunk
+// ============================================================================
+
+message StoreChunkRequest {
+    uint64 file_id = 1;
+    uint32 chunk_index = 2;
+    uint32 group_id = 3;
+    uint32 table_id = 4;
+    bytes data = 5;                              // May be ciphertext (nonce + ciphertext + auth_tag)
+    uint32 chunk_checksum = 6;                   // CRC32C of plaintext
+    bool is_encrypted = 7;                       // True if data is already encrypted
+    uint64 expires_at_us = 8;                    // 0 = permanent (standard segment), > 0 = page segment
+    uint32 page_granularity = 9;                 // 0=DAY, 1=WEEK, 2=MONTH (only if expires_at > 0)
+    repeated uint32 replica_node_ids = 10;       // Nodes to pipeline this chunk to
+}
+
+message StoreChunkResponse {
+    uint32 node_id = 1;
+    string segment_file = 2;                     // Path on this node
+    uint64 offset = 3;                           // Byte offset within segment
+    string error = 4;
+}
+
+// ============================================================================
+// FetchChunk
+// ============================================================================
+
+message FetchChunkRequest {
+    string segment_file = 1;
+    uint64 offset = 2;
+    uint64 length = 3;
+}
+
+message FetchChunkResponse {
+    bytes data = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// DeleteChunk
+// ============================================================================
+
+message DeleteChunkRequest {
+    uint64 file_id = 1;
+    uint32 chunk_index = 2;
+    uint32 node_id = 3;
+}
+
+message DeleteChunkResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// DeletePage
+// ============================================================================
+
+message DeletePageRequest {
+    string page_path = 1;                        // Full path to page segment file
+}
+
+message DeletePageResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// Ping
+// ============================================================================
+
+message PingRequest {}
+
+message PingResponse {
+    bool alive = 1;
+    uint64 timestamp_us = 2;
+}
+
+// ============================================================================
+// ReportSegments
+// ============================================================================
+
+message SegmentChunkEntry {
+    uint64 file_id = 1;
+    uint32 chunk_index = 2;
+    uint64 offset = 3;
+    uint64 length = 4;
+}
+
+message SegmentInfo {
+    string segment_file = 1;
+    uint64 total_bytes = 2;
+    uint64 used_bytes = 3;
+    repeated SegmentChunkEntry chunks = 4;
+}
+
+message ReportSegmentsRequest {}
+
+message ReportSegmentsResponse {
+    repeated SegmentInfo segments = 1;
+    string error = 2;
+}

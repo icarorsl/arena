@@ -1,114 +1,223 @@
 #include "registry/registry_service.h"
-#include "common/clock.h"
+
+#include <chrono>
+#include <iostream>
 #include <stdexcept>
-#include <algorithm>
+#include <thread>
 
 namespace filegroup {
 
-// Static instance holder
-static RegistryService* g_registry_instance = nullptr;
+// ============================================================================
+// RegistryServer
+// ============================================================================
 
-RegistryService::RegistryService() {
+RegistryServer::RegistryServer(uint32_t node_id,
+                               const std::vector<uint32_t>& peer_ids,
+                               const std::string& raft_log_path,
+                               uint32_t group_id)
+    : node_id_(node_id), group_id_(group_id)
+{
+    RaftConfig raft_config;
+    raft_config.local_node_id = node_id;
+    raft_config.peer_node_ids = peer_ids;
+    raft_config.log_path = raft_log_path;
+    raft_config.group_id = group_id;
+
+    // In-process transport (will be registered after all nodes are created)
+    transport_ = std::make_unique<InProcessRaftTransport>();
+
+    // Apply callback: when Raft commits an entry, apply it to the file index
+    auto apply_fn = [this](uint32_t entry_type, const void* body, uint16_t body_length, uint64_t lsn) {
+        (void)lsn; // LSN tracked internally
+
+        auto type = static_cast<ManifestEntryType>(entry_type);
+        switch (type) {
+            case ManifestEntryType::SESSION_OPEN: {
+                if (body_length >= sizeof(SessionOpenEntry)) {
+                    file_index_.apply_session_open(*static_cast<const SessionOpenEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::CHUNK_CONFIRMED: {
+                if (body_length >= 2) {
+                    file_index_.apply_chunk_confirmed(*static_cast<const ChunkConfirmedEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::VERSION_COMPLETE: {
+                if (body_length >= sizeof(VersionCompleteEntry)) {
+                    file_index_.apply_version_complete(*static_cast<const VersionCompleteEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::VERSION_DELETED: {
+                if (body_length >= sizeof(VersionDeletedEntry)) {
+                    file_index_.apply_version_deleted(*static_cast<const VersionDeletedEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::FILE_DELETED: {
+                if (body_length >= sizeof(FileDeletedEntry)) {
+                    file_index_.apply_file_deleted(*static_cast<const FileDeletedEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::SESSION_TIMED_OUT: {
+                if (body_length >= sizeof(SessionTimedOutEntry)) {
+                    file_index_.apply_session_timed_out(*static_cast<const SessionTimedOutEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::CHUNK_DELETE_CONFIRMED: {
+                if (body_length >= sizeof(ChunkDeleteConfirmedEntry)) {
+                    file_index_.apply_chunk_delete_confirmed(*static_cast<const ChunkDeleteConfirmedEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::PAGE_DELETED: {
+                if (body_length >= sizeof(PageDeletedEntry)) {
+                    file_index_.apply_page_deleted(*static_cast<const PageDeletedEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::NODE_HEALTH: {
+                if (body_length >= sizeof(NodeHealthEntry)) {
+                    file_index_.apply_node_health(*static_cast<const NodeHealthEntry*>(body));
+                }
+                break;
+            }
+            case ManifestEntryType::MAX_VERSIONS_ENFORCED: {
+                if (body_length >= sizeof(MaxVersionsEnforcedEntry)) {
+                    file_index_.apply_max_versions_enforced(*static_cast<const MaxVersionsEnforcedEntry*>(body));
+                }
+                break;
+            }
+            default:
+                // Phase 3 / unknown entry types — silently skip (forward compatibility)
+                std::cerr << "[registry] Unknown manifest entry type: " << entry_type << std::endl;
+                break;
+        }
+    };
+
+    raft_ = std::make_unique<RaftNode>(std::move(raft_config),
+                                       std::move(transport_),
+                                       std::move(apply_fn));
+
+    std::cout << "[registry] Server created: node=" << node_id_
+              << " group=" << group_id_ << std::endl;
 }
 
-RegistryService& RegistryService::instance() {
-    if (!g_registry_instance) {
-        g_registry_instance = new RegistryService();
-    }
-    return *g_registry_instance;
+RegistryServer::~RegistryServer() {
+    stop();
 }
 
-RegistryResponse RegistryService::register_node(
-    uint32_t node_id,
-    const std::string& host,
-    uint32_t port) {
-    
-    if (node_id == 0) {
-        return {false, "node_id must be > 0"};
-    }
-    
-    if (host.empty()) {
-        return {false, "host is empty"};
-    }
-    
-    if (port == 0 || port > 65535) {
-        return {false, "port must be 1-65535"};
-    }
-    
-    if (nodes_.find(node_id) != nodes_.end()) {
-        return {false, "node_id already registered"};
-    }
-    
-    NodeInfo info;
-    info.node_id = node_id;
-    info.host = host;
-    info.port = port;
-    info.status = "healthy";
-    info.last_heartbeat_us = now_us();
-    
-    nodes_[node_id] = info;
-    
-    return {true, ""};
+void RegistryServer::start() {
+    // Raft node starts in its constructor (event thread already running)
 }
 
-RegistryResponse RegistryService::unregister_node(uint32_t node_id) {
-    auto it = nodes_.find(node_id);
-    if (it == nodes_.end()) {
-        return {false, "node not found"};
-    }
-    
-    nodes_.erase(it);
-    return {true, ""};
+void RegistryServer::stop() {
+    raft_.reset();
 }
 
-RegistryResponse RegistryService::heartbeat(uint32_t node_id) {
-    auto it = nodes_.find(node_id);
-    if (it == nodes_.end()) {
-        return {false, "node not found"};
+FileIndex& RegistryServer::file_index() { return file_index_; }
+const FileIndex& RegistryServer::file_index() const { return file_index_; }
+RaftNode& RegistryServer::raft_node() { return *raft_; }
+uint32_t RegistryServer::node_id() const { return node_id_; }
+bool RegistryServer::is_leader() const { return raft_->is_leader(); }
+uint32_t RegistryServer::leader_id() const { return raft_->leader_id(); }
+
+bool RegistryServer::wait_for_leader(uint64_t timeout_us) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::microseconds(timeout_us);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (raft_->is_leader()) return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    
-    it->second.last_heartbeat_us = now_us();
-    return {true, ""};
+    return raft_->is_leader();
 }
 
-NodesListResponse RegistryService::list_nodes() {
-    NodesListResponse resp;
-    
-    for (const auto& [node_id, info] : nodes_) {
-        resp.nodes.push_back(info);
-    }
-    
-    return resp;
+// ============================================================================
+// RegistryClient
+// ============================================================================
+
+RegistryClient::RegistryClient(std::vector<RegistryServer*> servers)
+    : servers_(std::move(servers))
+{
 }
 
-NodesListResponse RegistryService::get_node(uint32_t node_id) {
-    NodesListResponse resp;
-    
-    auto it = nodes_.find(node_id);
-    if (it == nodes_.end()) {
-        resp.error = "node not found";
-        return resp;
+RegistryServer* RegistryClient::find_leader() {
+    for (auto* server : servers_) {
+        if (server->is_leader()) {
+            return server;
+        }
     }
-    
-    resp.nodes.push_back(it->second);
-    return resp;
+    return nullptr;
 }
 
-RegistryResponse RegistryService::set_node_status(
-    uint32_t node_id,
-    const std::string& status) {
-    
-    auto it = nodes_.find(node_id);
-    if (it == nodes_.end()) {
-        return {false, "node not found"};
+std::pair<bool, uint64_t> RegistryClient::append_entry(
+    uint32_t entry_type, const void* body, uint16_t body_length)
+{
+    // Try each server until we find the leader
+    for (auto* server : servers_) {
+        if (server->is_leader()) {
+            return server->raft_node().propose(entry_type, body, body_length);
+        }
     }
-    
-    if (status != "healthy" && status != "degraded" && status != "offline") {
-        return {false, "invalid status"};
+    // No leader found — try all servers anyway (one might become leader)
+    for (auto* server : servers_) {
+        auto [success, lsn] = server->raft_node().propose(entry_type, body, body_length);
+        if (success) return {true, lsn};
     }
-    
-    it->second.status = status;
-    return {true, ""};
+    return {false, 0};
+}
+
+const LogicalFileEntry* RegistryClient::get_file(uint64_t logical_file_id) {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().get_file(logical_file_id);
+    }
+    return nullptr;
+}
+
+const VersionEntry* RegistryClient::get_latest_complete(uint64_t logical_file_id) {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().get_latest_complete(logical_file_id);
+    }
+    return nullptr;
+}
+
+const VersionEntry* RegistryClient::get_version(uint64_t logical_file_id, uint32_t version) {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().get_version(logical_file_id, version);
+    }
+    return nullptr;
+}
+
+std::vector<LogicalFileEntry> RegistryClient::list_files(uint16_t table_id, uint32_t group_id) {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().list_files(table_id, group_id);
+    }
+    return {};
+}
+
+std::vector<uint32_t> RegistryClient::get_confirmed_chunks(uint64_t session_id) {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().get_confirmed_chunks(session_id);
+    }
+    return {};
+}
+
+void RegistryClient::report_node_health(uint16_t node_id, NodeState state) {
+    NodeHealthEntry entry;
+    entry.node_id = node_id;
+    entry.state = static_cast<uint8_t>(state);
+    append_entry(static_cast<uint32_t>(ManifestEntryType::NODE_HEALTH), &entry, sizeof(entry));
+}
+
+std::unordered_map<uint16_t, NodeState> RegistryClient::get_cluster_health() {
+    // Query from any server (all have replicated state via Raft)
+    for (auto* server : servers_) {
+        return server->file_index().get_node_health();
+    }
+    return {};
 }
 
 }  // namespace filegroup

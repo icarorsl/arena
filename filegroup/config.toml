@@ -1,0 +1,47 @@
+# FILE Group — Minimal Cluster Configuration
+
+election_timeout_ms = 300
+heartbeat_interval_ms = 50
+
+[tls]
+ca_cert_file = "certs/ca.crt"
+engine_cert_file = "certs/engine.crt"
+engine_key_file = "certs/engine.key"
+
+[registry_nodes]
+id = 1
+address = "localhost:50051"
+cert_file = "certs/ca.crt"
+key_file = "certs/engine.key"
+
+[storage_nodes]
+node_id = 1
+address = "localhost:5001"
+role = "ORIGIN"
+region = ""
+cert_file = "certs/engine.crt"
+key_file = "certs/engine.key"
+
+[groups]
+group_id = 1
+name = "default"
+chunk_size = 65536
+min_chunk_bytes = 1024
+replication_factor = 1
+max_versions = 5
+file_expires_in_days = 0
+expiry_granularity = "UNSET"
+encryption = "NONE"
+
+[tables]
+table_id = 1
+name = "default"
+group_id = 1
+expiry_granularity = "UNSET"
+encryption = "NONE"
+
+[api_keys]
+key = "test-api-key"
+name = "development"
+groups = "1"
+permissions = "read,write,admin"

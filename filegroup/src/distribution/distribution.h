@@ -2,61 +2,37 @@
 
 #include <cstdint>
 #include <vector>
-#include <map>
 
 namespace filegroup {
 
-/**
- * Chunk distribution algorithm for Phase 1.
- *
- * Distributes chunks across storage nodes for replication.
- * Uses even distribution with deterministic placement.
- */
+// ============================================================================
+// Chunk Distribution Algorithm
+//
+// Deterministically assigns each chunk to a primary node + replica nodes
+// using only HEALTHY ORIGIN nodes. Ring-based: primary is selected by hash,
+// replicas are the next nodes clockwise in the ring.
+// ============================================================================
 
-struct ChunkPlacement {
+struct ChunkAssignment {
     uint32_t chunk_index;
-    std::vector<uint32_t> node_ids;  // List of node IDs for replication
+    uint16_t primary_node_id;
+    std::vector<uint16_t> replica_node_ids;
 };
 
-/**
- * Distributes chunks across available nodes.
- *
- * Algorithm:
- * - For each chunk, assign replication_factor nodes
- * - Use round-robin across available nodes for even load balancing
- * - Deterministic: same input always produces same output
- *
- * Parameters:
- *   total_chunks: Number of chunks to distribute
- *   replication_factor: Number of copies per chunk
- *   available_nodes: List of available node IDs
- *
- * Returns:
- *   Vector of ChunkPlacement, one per chunk
- *
- * Throws:
- *   std::invalid_argument if replication_factor > available_nodes.size()
- */
-std::vector<ChunkPlacement> distribute_chunks(
-    uint32_t total_chunks,
+/// Compute chunk assignments for all chunks of a file version.
+/// @param file_id The file being uploaded
+/// @param chunk_count Total number of chunks in the file
+/// @param replication_factor Number of replicas per chunk (1 = no replicas)
+/// @param healthy_origin_node_ids Sorted list of healthy ORIGIN node IDs
+/// @return One ChunkAssignment per chunk
+///
+/// Algorithm:
+///   primary = healthy_nodes[(file_id + chunk_index) % healthy_count]
+///   replicas = next (replication_factor - 1) nodes clockwise in ring, skipping primary
+std::vector<ChunkAssignment> assign_chunks(
+    uint64_t file_id,
+    uint32_t chunk_count,
     uint8_t replication_factor,
-    const std::vector<uint32_t>& available_nodes
-);
-
-/**
- * Validates a distribution plan.
- *
- * Checks:
- * - All chunks have exactly replication_factor nodes
- * - No duplicate nodes within a chunk
- * - All node IDs are in available_nodes
- * - All chunks 0..total_chunks-1 are present
- */
-bool validate_distribution(
-    const std::vector<ChunkPlacement>& placements,
-    uint32_t total_chunks,
-    uint8_t replication_factor,
-    const std::vector<uint32_t>& available_nodes
-);
+    const std::vector<uint16_t>& healthy_origin_node_ids);
 
 }  // namespace filegroup

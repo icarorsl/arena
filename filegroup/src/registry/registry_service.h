@@ -1,94 +1,107 @@
 #pragma once
 
-#include <string>
 #include <cstdint>
-#include <vector>
+#include <functional>
 #include <memory>
-#include <map>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include "common/types.h"
+#include "manifest/file_index.h"
+#include "raft/raft.h"
 
 namespace filegroup {
 
-/**
- * Registry RPC Service (Phase 1 Mock Implementation)
- *
- * In-process registry service for coordinating storage nodes.
- * This is a mock that implements the RPC interface as C++ methods.
- * Will be replaced with actual gRPC service in future.
- */
+// ============================================================================
+// RegistryServer — In-process registry with Raft-backed FileIndex
+// Phase 1: In-process transport. Phase 2+: gRPC wrapper around this.
+// ============================================================================
 
-struct NodeInfo {
-    uint32_t node_id;
-    std::string host;
-    uint32_t port;
-    std::string status;  // "healthy", "degraded", "offline"
-    uint64_t last_heartbeat_us;
-};
-
-struct RegistryResponse {
-    bool success;
-    std::string error;
-};
-
-struct NodesListResponse {
-    std::vector<NodeInfo> nodes;
-    std::string error;
-};
-
-class RegistryService {
+class RegistryServer {
 public:
-    /**
-     * Singleton instance.
-     */
-    static RegistryService& instance();
-    
-    /**
-     * Register a storage node with the registry.
-     *
-     * Parameters:
-     *   node_id: Unique node identifier
-     *   host: Node hostname or IP address
-     *   port: Node gRPC port
-     *
-     * Returns:
-     *   Response with success flag
-     */
-    RegistryResponse register_node(
-        uint32_t node_id,
-        const std::string& host,
-        uint32_t port
-    );
-    
-    /**
-     * Unregister a storage node.
-     */
-    RegistryResponse unregister_node(uint32_t node_id);
-    
-    /**
-     * Update node heartbeat timestamp.
-     */
-    RegistryResponse heartbeat(uint32_t node_id);
-    
-    /**
-     * Get list of all registered nodes.
-     */
-    NodesListResponse list_nodes();
-    
-    /**
-     * Get specific node info.
-     */
-    NodesListResponse get_node(uint32_t node_id);
-    
-    /**
-     * Mark node as healthy/degraded/offline.
-     */
-    RegistryResponse set_node_status(
-        uint32_t node_id,
-        const std::string& status
-    );
+    RegistryServer(uint32_t node_id,
+                   const std::vector<uint32_t>& peer_ids,
+                   const std::string& raft_log_path,
+                   uint32_t group_id);
+    ~RegistryServer();
+
+    /// Start the Raft node (begins election / following).
+    void start();
+
+    /// Stop the server.
+    void stop();
+
+    /// Get the file index (shared, thread-safe).
+    FileIndex& file_index();
+    const FileIndex& file_index() const;
+
+    /// Get the Raft node.
+    RaftNode& raft_node();
+
+    /// Get this node's ID.
+    uint32_t node_id() const;
+
+    /// Check if this node is the Raft leader.
+    bool is_leader() const;
+
+    /// Get the current leader's node ID (0 if unknown).
+    uint32_t leader_id() const;
+
+    /// Block until this node becomes leader or timeout (microseconds).
+    /// Returns true if became leader, false on timeout.
+    bool wait_for_leader(uint64_t timeout_us = 5'000'000);
 
 private:
-    RegistryService();
-    std::map<uint32_t, NodeInfo> nodes_;
+    uint32_t node_id_;
+    uint32_t group_id_;
+    FileIndex file_index_;
+    std::unique_ptr<RaftNode> raft_;
+    std::unique_ptr<InProcessRaftTransport> transport_;
+};
+
+// ============================================================================
+// RegistryClient — Engine-side client for registry communication
+// Phase 1: Direct reference to server. Phase 2+: gRPC.
+// ============================================================================
+
+class RegistryClient {
+public:
+    /// Create a client connected to multiple registry servers (for leader discovery).
+    /// The client tries each server until it finds the leader.
+    explicit RegistryClient(std::vector<RegistryServer*> servers);
+
+    /// Append a manifest entry. Finds the leader, sends proposal, waits for commit.
+    /// Returns (success, lsn).
+    std::pair<bool, uint64_t> append_entry(
+        uint32_t entry_type, const void* body, uint16_t body_length);
+
+    /// Get file metadata from the file index.
+    const LogicalFileEntry* get_file(uint64_t logical_file_id);
+
+    /// Get latest complete version.
+    const VersionEntry* get_latest_complete(uint64_t logical_file_id);
+
+    /// Get a specific version.
+    const VersionEntry* get_version(uint64_t logical_file_id, uint32_t version);
+
+    /// List files by group/table.
+    std::vector<LogicalFileEntry> list_files(uint16_t table_id, uint32_t group_id);
+
+    /// Get confirmed chunks for a session.
+    std::vector<uint32_t> get_confirmed_chunks(uint64_t session_id);
+
+    /// Report node health.
+    void report_node_health(uint16_t node_id, NodeState state);
+
+    /// Get cluster health.
+    std::unordered_map<uint16_t, NodeState> get_cluster_health();
+
+    /// Find the current leader server.
+    RegistryServer* find_leader();
+
+private:
+    std::vector<RegistryServer*> servers_;
 };
 
 }  // namespace filegroup

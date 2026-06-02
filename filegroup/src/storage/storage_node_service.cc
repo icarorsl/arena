@@ -1,101 +1,202 @@
 #include "storage/storage_node_service.h"
+
+#include <sys/stat.h>
+#include <cerrno>
+#include <cstring>
+#include <sstream>
 #include <stdexcept>
 
 namespace filegroup {
 
-// Static registry of node services
-static std::map<uint32_t, std::shared_ptr<StorageNodeService>> g_node_services;
+// ============================================================================
+// StorageServer
+// ============================================================================
 
-std::shared_ptr<StorageNodeService> StorageNodeService::get_node_service(uint32_t node_id) {
-    auto it = g_node_services.find(node_id);
-    if (it != g_node_services.end()) {
-        return it->second;
-    }
-    
-    // Create new service for this node
-    auto service = std::make_shared<StorageNodeService>(node_id, 100ull * 1024 * 1024 * 1024);  // 100 GB default
-    g_node_services[node_id] = service;
-    return service;
+StorageServer::StorageServer(uint16_t node_id, const std::string& data_dir,
+                               uint64_t segment_size_max)
+    : node_id_(node_id)
+    , data_dir_(data_dir)
+    , segment_size_max_(segment_size_max)
+{
+    // Ensure data directory exists
+    mkdir(data_dir_.c_str(), 0755);
 }
 
-StorageNodeService::StorageNodeService(
-    uint32_t node_id,
-    uint64_t capacity_bytes)
-    : node_id_(node_id),
-      capacity_bytes_(capacity_bytes),
-      used_bytes_(0) {
+StorageServer::~StorageServer() = default;
+
+StoreChunkResult StorageServer::store_chunk(
+    uint64_t file_id, uint32_t chunk_index,
+    uint32_t group_id, uint32_t table_id,
+    const uint8_t* data, uint64_t size,
+    uint32_t chunk_checksum, bool is_encrypted,
+    uint64_t expires_at_us, ExpiryGranularity page_granularity)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    StoreChunkResult result;
+
+    // Determine if this is a page segment (has expiry) or standard
+    uint64_t bucket_start = 0;
+    if (expires_at_us > 0) {
+        bucket_start = PageSegment::expiry_bucket_start_us(page_granularity, expires_at_us);
+    }
+
+    SegmentKey key{group_id, table_id, bucket_start};
+
+    try {
+        // Get or create the active segment
+        Segment* seg = get_active_segment(group_id, table_id, expires_at_us);
+        if (!seg) {
+            result.error = "Failed to create segment";
+            return result;
+        }
+
+        uint64_t offset = seg->write_chunk(file_id, chunk_index, data, size,
+                                            chunk_checksum, is_encrypted);
+
+        result.success = true;
+        result.segment_file = seg->path();
+        result.offset = offset;
+
+        // Index the chunk for future fetch/delete
+        chunk_index_[file_id][chunk_index] = {seg->path(), offset};
+    } catch (const std::exception& e) {
+        result.error = e.what();
+    }
+
+    return result;
 }
 
-UploadChunkResponse StorageNodeService::upload_chunk(const UploadChunkRequest& request) {
-    // Check if chunk already exists
-    if (chunks_.find(request.chunk_index) != chunks_.end()) {
-        return {false, request.chunk_index, "chunk already exists"};
+FetchChunkResult StorageServer::fetch_chunk(const std::string& segment_file,
+                                              uint64_t offset, uint64_t length)
+{
+    FetchChunkResult result;
+
+    try {
+        Segment seg(segment_file);
+        result.data = seg.read_chunk(offset, length);
+        result.success = true;
+    } catch (const std::exception& e) {
+        result.error = e.what();
     }
-    
-    // Check capacity
-    uint64_t chunk_size = request.chunk_data.size();
-    if (used_bytes_ + chunk_size > capacity_bytes_) {
-        return {false, request.chunk_index, "insufficient capacity"};
-    }
-    
-    // Store chunk
-    StoredChunk stored;
-    stored.data = request.chunk_data;
-    stored.checksum = request.chunk_checksum;
-    stored.replication_factor = request.replication_factor;
-    
-    chunks_[request.chunk_index] = stored;
-    used_bytes_ += chunk_size;
-    
-    return {true, request.chunk_index, ""};
+
+    return result;
 }
 
-DownloadChunkResponse StorageNodeService::download_chunk(const DownloadChunkRequest& request) {
-    auto it = chunks_.find(request.chunk_index);
-    if (it == chunks_.end()) {
-        return {false, request.chunk_index, "", 0, "chunk not found"};
-    }
-    
-    const auto& stored = it->second;
-    return {
-        true,
-        request.chunk_index,
-        stored.data,
-        stored.checksum,
-        ""
-    };
-}
+bool StorageServer::delete_chunk(uint64_t file_id, uint32_t chunk_index) {
+    std::lock_guard<std::mutex> lock(mutex_);
 
-bool StorageNodeService::delete_chunk(uint32_t chunk_index) {
-    auto it = chunks_.find(chunk_index);
-    if (it == chunks_.end()) {
+    auto fit = chunk_index_.find(file_id);
+    if (fit == chunk_index_.end()) return false;
+
+    auto cit = fit->second.find(chunk_index);
+    if (cit == fit->second.end()) return false;
+
+    try {
+        Segment seg(cit->second.segment_file);
+        bool ok = seg.mark_deleted(cit->second.offset);
+        fit->second.erase(cit);
+        return ok;
+    } catch (...) {
         return false;
     }
-    
-    used_bytes_ -= it->second.data.size();
-    chunks_.erase(it);
+}
+
+bool StorageServer::delete_page(const std::string& page_path) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return PageSegment::unlink_page(page_path);
+}
+
+bool StorageServer::ping() const {
     return true;
 }
 
-StorageNodeInfo StorageNodeService::get_info() const {
-    return {
-        node_id_,
-        capacity_bytes_,
-        used_bytes_,
-        static_cast<uint32_t>(chunks_.size())
-    };
+std::vector<StorageServer::SegmentInventory> StorageServer::report_segments() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<SegmentInventory> inventory;
+
+    for (const auto& [key, seg] : segments_) {
+        SegmentInventory inv;
+        inv.segment_file = seg->path();
+        inv.total_bytes = 0;
+        inv.used_bytes = seg->total_data_bytes();
+        inventory.push_back(inv);
+    }
+
+    return inventory;
 }
 
-uint64_t StorageNodeService::get_used_bytes() const {
-    return used_bytes_;
+Segment* StorageServer::get_active_segment(uint32_t group_id, uint32_t table_id,
+                                             uint64_t expires_at_us) {
+    SegmentKey key{group_id, table_id, 0};
+    if (expires_at_us > 0) {
+        // Page segments are keyed by expiry bucket, but we compute that in store_chunk
+        key.expires_bucket = 0; // Simplified: use table-level segments
+    }
+
+    auto it = segments_.find(key);
+    if (it != segments_.end()) {
+        return it->second.get();
+    }
+
+    // Create new segment
+    std::string path = segment_filename(group_id, table_id, expires_at_us, segment_sequence_++);
+
+    auto seg = std::make_unique<Segment>(path, true);
+    Segment* ptr = seg.get();
+    segments_[key] = std::move(seg);
+    return ptr;
 }
 
-bool StorageNodeService::has_chunk(uint32_t chunk_index) const {
-    return chunks_.find(chunk_index) != chunks_.end();
+std::string StorageServer::segment_filename(uint32_t group_id, uint32_t table_id,
+                                              uint64_t expires_at_us, uint32_t sequence) const {
+    std::ostringstream oss;
+    if (expires_at_us > 0) {
+        oss << data_dir_ << "/page_" << node_id_ << "_" << group_id
+            << "_" << table_id << "_" << sequence << ".seg";
+    } else {
+        oss << data_dir_ << "/seg_" << node_id_ << "_" << group_id
+            << "_" << table_id << "_" << sequence << ".seg";
+    }
+    return oss.str();
 }
 
-void StorageNodeService::reset_all_nodes() {
-    g_node_services.clear();
+// ============================================================================
+// StorageClient
+// ============================================================================
+
+StorageClient::StorageClient(StorageServer* server)
+    : server_(server), node_id_(server->node_id()) {}
+
+StoreChunkResult StorageClient::store_chunk(
+    uint64_t file_id, uint32_t chunk_index,
+    uint32_t group_id, uint32_t table_id,
+    const uint8_t* data, uint64_t size,
+    uint32_t chunk_checksum, bool is_encrypted,
+    uint64_t expires_at_us, ExpiryGranularity page_granularity)
+{
+    return server_->store_chunk(file_id, chunk_index, group_id, table_id,
+                                 data, size, chunk_checksum, is_encrypted,
+                                 expires_at_us, page_granularity);
 }
+
+FetchChunkResult StorageClient::fetch_chunk(const std::string& segment_file,
+                                              uint64_t offset, uint64_t length) {
+    return server_->fetch_chunk(segment_file, offset, length);
+}
+
+bool StorageClient::delete_chunk(uint64_t file_id, uint32_t chunk_index) {
+    return server_->delete_chunk(file_id, chunk_index);
+}
+
+bool StorageClient::delete_page(const std::string& page_path) {
+    return server_->delete_page(page_path);
+}
+
+bool StorageClient::ping() {
+    return server_->ping();
+}
+
+uint16_t StorageClient::node_id() const { return node_id_; }
 
 }  // namespace filegroup
