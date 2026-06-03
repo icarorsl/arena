@@ -281,6 +281,7 @@ void FileIndex::apply_table_created(const TableCreatedEntry& e) {
     t.replication_factor = e.replication_factor;
     t.encryption = static_cast<EncryptionAlgo>(e.encryption);
     t.max_versions = e.max_versions;
+    t.file_expires_in_days = e.file_expires_in_days;
     t.expiry_granularity = static_cast<ExpiryGranularity>(e.expiry_granularity);
     // Replace if same (group_id, table_id) already exists, else append
     for (auto& existing : tables_) {

@@ -16,6 +16,10 @@ public class TablesModel : PageModel
     [BindProperty] public uint TableId { get; set; }
     [BindProperty] public uint GroupId { get; set; } = 1;
     [BindProperty] public string TableName { get; set; } = "";
+    [BindProperty] public ulong ChunkSize { get; set; }
+    [BindProperty] public uint ReplicationFactor { get; set; }
+    [BindProperty] public uint ExpiresInDays { get; set; }
+    [BindProperty] public uint MaxVersions { get; set; }
 
     public TablesModel(Engine.EngineClient client) => _client = client;
 
@@ -29,7 +33,11 @@ public class TablesModel : PageModel
             {
                 TableId = TableId,
                 GroupId = GroupId,
-                Name = TableName
+                Name = TableName,
+                ChunkSize = ChunkSize,
+                ReplicationFactor = ReplicationFactor,
+                FileExpiresInDays = ExpiresInDays,
+                MaxVersions = MaxVersions
             });
             Created = true;
         }
@@ -50,7 +58,11 @@ public class TablesModel : PageModel
             {
                 TableId = t.TableId,
                 GroupId = t.GroupId,
-                Name = t.Name
+                Name = t.Name,
+                ChunkSize = t.ChunkSize,
+                ReplicationFactor = t.ReplicationFactor,
+                MaxVersions = t.MaxVersions,
+                ExpiresInDays = t.FileExpiresInDays
             }).ToList();
 
             foreach (var t in Tables)
@@ -85,5 +97,9 @@ public class TablesModel : PageModel
         public uint ActiveCount { get; set; }
         public uint DeletedCount { get; set; }
         public ulong TotalSize { get; set; }
+        public ulong ChunkSize { get; set; }
+        public uint ReplicationFactor { get; set; }
+        public uint MaxVersions { get; set; }
+        public uint ExpiresInDays { get; set; }
     }
 }

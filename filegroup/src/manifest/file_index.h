@@ -61,6 +61,7 @@ struct TableEntry {
     uint8_t replication_factor;
     EncryptionAlgo encryption;
     uint32_t max_versions;
+    uint32_t file_expires_in_days;
     ExpiryGranularity expiry_granularity;
 };
 

@@ -84,12 +84,13 @@ bool EngineServer::ping()const{return true;}
 
 std::vector<EngineServer::TIR> EngineServer::get_tables(){
  std::vector<TIR> r;auto ts=rc_->get_tables();
- for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
+ for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
  return r;
 }
 
-EngineServer::SR EngineServer::create_table(uint32_t tid,uint32_t gid,const std::string& name){
+EngineServer::SR EngineServer::create_table(uint32_t tid,uint32_t gid,const std::string& name,uint32_t fed,uint32_t mv){
  TableCreatedEntry e{};e.table_id=tid;e.group_id=gid;strncpy(e.name,name.c_str(),sizeof(e.name)-1);
+ e.file_expires_in_days=fed;e.max_versions=mv;
  auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::TABLE_CREATED,&e,sizeof(e));(void)lsn;
  return{ok,ok?"":"create failed"};
 }

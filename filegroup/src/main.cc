@@ -190,7 +190,7 @@ public:
                               filegroup::engine::CreateTableResponse* resp) override
     {
         (void)ctx;
-        auto result = server_.create_table(req->table_id(), req->group_id(), req->name());
+        auto result = server_.create_table(req->table_id(), req->group_id(), req->name(), req->file_expires_in_days(), req->max_versions());
         resp->set_success(result.success);
         if (!result.error.empty()) resp->set_error(result.error);
         return result.success ? Status::OK : Status(grpc::INTERNAL, result.error);
@@ -211,6 +211,7 @@ public:
             ti->set_replication_factor(t.replication_factor);
             ti->set_encryption(static_cast<filegroup::engine::EncryptionAlgo>(t.encryption));
             ti->set_max_versions(t.max_versions);
+            ti->set_file_expires_in_days(t.file_expires_in_days);
         }
         return Status::OK;
     }

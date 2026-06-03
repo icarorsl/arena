@@ -163,12 +163,13 @@ struct ChunkLocationUpdatedEntry {
 struct TableCreatedEntry {
     uint32_t table_id;
     uint32_t group_id;
-    char     name[64];           // Null-terminated table name
-    uint64_t chunk_size;         // 0 = inherit from group
-    uint8_t  replication_factor; // 0 = inherit
-    uint8_t  encryption;         // EncryptionAlgo, 0xFF = inherit
-    uint32_t max_versions;       // 0 = inherit
-    uint8_t  expiry_granularity; // ExpiryGranularity, 0xFF = inherit
+    char     name[64];
+    uint64_t chunk_size;
+    uint8_t  replication_factor;
+    uint8_t  encryption;
+    uint32_t max_versions;
+    uint32_t file_expires_in_days;
+    uint8_t  expiry_granularity;
 };
 
 // Phase 3+ entry types (declared for forward compatibility)

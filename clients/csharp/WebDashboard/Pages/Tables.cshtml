@@ -31,6 +31,26 @@
             <label style="font-size:.8rem;color:var(--muted);">Name</label>
             <input type="text" name="TableName" required style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
         </div>
+        <div style="display:flex;gap:.75rem;">
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Chunk Size (bytes)</label>
+                <input type="number" name="ChunkSize" value="0" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Replication</label>
+                <input type="number" name="ReplicationFactor" value="0" min="0" max="255" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+        </div>
+        <div style="display:flex;gap:.75rem;">
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Max Versions</label>
+                <input type="number" name="MaxVersions" value="0" min="0" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Expires In (days)</label>
+                <input type="number" name="ExpiresInDays" value="0" min="0" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+        </div>
         <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">Create</button>
     </form>
 </details>
@@ -60,7 +80,10 @@ else
                 <th>Files</th>
                 <th>Active</th>
                 <th>Deleted</th>
-                <th>Total Size</th>
+                <th>Size</th>
+                <th>Chunk</th>
+                <th>Max&nbsp;Ver</th>
+                <th>Expires</th>
             </tr>
         </thead>
         <tbody>
@@ -76,6 +99,9 @@ else
                 <td class="mono"><span class="badge ok">@t.ActiveCount</span></td>
                 <td class="mono"><span class="badge err">@t.DeletedCount</span></td>
                 <td class="mono">@FormatSize(t.TotalSize)</td>
+                <td class="mono">@(t.ChunkSize > 0 ? FormatSize(t.ChunkSize) : "—")</td>
+                <td class="mono">@(t.MaxVersions > 0 ? t.MaxVersions.ToString() : "—")</td>
+                <td class="mono">@(t.ExpiresInDays > 0 ? $"{t.ExpiresInDays}d" : "never")</td>
             </tr>
         }
         </tbody>

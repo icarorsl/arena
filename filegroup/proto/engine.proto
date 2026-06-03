@@ -266,6 +266,7 @@ message CreateTableRequest {
     uint64 chunk_size = 4;           // 0 = inherit
     uint32 replication_factor = 5;    // 0 = inherit
     uint32 max_versions = 6;          // 0 = inherit
+    uint32 file_expires_in_days = 7;  // 0 = no expiry
 }
 
 message CreateTableResponse {
@@ -283,6 +284,7 @@ message TableInfo {
     uint32 replication_factor = 5;
     EncryptionAlgo encryption = 6;
     uint32 max_versions = 7;
+    uint32 file_expires_in_days = 8;
 }
 
 message GetTablesResponse {
