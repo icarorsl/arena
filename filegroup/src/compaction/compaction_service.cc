@@ -141,7 +141,7 @@ uint32_t CompactionService::run_once() {
                     }
 
                     if (live) {
-                        live_chunks.push_back({data_offset, ceh.file_id,
+                        live_chunks.push_back({cursor, ceh.file_id,
                                                ceh.chunk_index, ceh.chunk_size,
                                                ceh.chunk_checksum, ceh.is_encrypted != 0});
                     } else {
