@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include "common/clock.h"
 
 namespace filegroup {
 
