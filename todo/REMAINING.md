@@ -1,11 +1,9 @@
 # FILE Group — Remaining Work
 
-## ⚠️ Stubbed (Steps 14–19)
+## ⚠️ Stubbed (Steps 17, 19)
 
 | Step | Component | What's missing |
 |---|---|---|
-| 14 | Versioning enforcement | Per-version `VERSION_DELETED` manifest entries on file delete (currently only writes single `FILE_DELETED`); integration tests |
-| | | **Current delete behavior:** Manifest-only. `FILE_DELETED` → in-memory `VersionState::DELETED`. Segment file headers and chunk data on disk are untouched. Physical disk reclamation needs Step 17 (compaction). |
 | 17 | Segment compaction | Read non-deleted chunks, rewrite to new segment, update locations |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
 
@@ -14,8 +12,8 @@
 | Item | Notes |
 |---|---|
 | Restore/undelete endpoint | Reverse a delete marker — restore versions to previous state (S3-style) |
-| Per-version delete UI | `DeleteVersion` RPC works but dashboard has no UI for it |
 | Serve correct MIME type | Sniff magic bytes to set Content-Type for Play page (mp4, webm, etc.) |
+| UpdateTable gRPC + UI | Modify table config (name, expiry, max_versions, chunk_size). Lazy enforcement — expiry scanner picks up new `file_expires_in_days` on next 60s cycle; `max_versions` only affects future `complete_session` calls. |
 
 ## ❌ Production hardening (not in Phase 1 spec)
 

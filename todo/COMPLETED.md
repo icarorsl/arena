@@ -42,11 +42,14 @@
 | Component | Status |
 |---|---|
 | Step 14 — max_versions enforcement | ✅ Auto-deletes oldest versions in `CompleteSession` when count exceeds configured limit |
-| Step 16 — Expiry scanner | ✅ Background thread every 60s, marks expired versions VERSION_DELETED via Raft |
+| Step 14 — per-version delete | ✅ `delete_file` writes individual `VERSION_DELETED` per version (no bulk `FILE_DELETED`) |
 | Step 15 — Heartbeat | ✅ Pings storage nodes every 5s, HEALTHY→SUSPECT→DEAD FSM, writes NODE_HEALTH to Raft |
+| Step 16 — Expiry scanner | ✅ Background thread every 60s, marks expired versions VERSION_DELETED via Raft |
 | Step 18 — Recovery | ✅ Raft log replay on startup, data survives restarts |
+| Data directory fix | ✅ Uses `/var/lib/filegroup` (Docker volume), respects `FILEGROUP_DATA_DIR` env var |
 | Web Dashboard | ✅ Tables, Files, Upload, Delete, Play, Status, dark theme |
 | Dynamic table creation | ✅ `CreateTable` RPC + Raft-replicated manifest entries |
+| Per-version delete UI | ✅ ✕ button per version on file detail page with confirmation dialog |
 | `created_at_us` timestamps | ✅ On files and versions, formatted in dashboard |
 | Anti-forgery fix | ✅ `_ViewImports.cshtml` enables tag helpers, `_ViewStart.cshtml` enables layout |
 | Video streaming | ✅ gRPC→HTTP chunked streaming, no buffering |
