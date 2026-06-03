@@ -11,13 +11,6 @@
 | 18 | Engine + node recovery | Manifest replay on startup, segment inventory scan, missing chunk detection |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
 
-## ❌ Not started (Steps 21–22)
-
-| Step | Component | What's needed |
-|---|---|---|
-| 21 | Prometheus metrics | HTTP endpoint on :9090, gauges/counters/histograms for all subsystems |
-| 22 | `dbctl` CLI | Subcommand tool: `tls init`, `cluster status`, `files list`, `sessions`, `nodes`, etc. |
-
 ## ❌ Not started (gRPC-inter-node)
 
 | Component | What's needed |

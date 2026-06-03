@@ -18,6 +18,8 @@
 | 12 | Upload protocol | `Engine::open_session/write_chunk/complete_session` |
 | 13 | Read protocol | `Engine::read_file/read_chunk`, replica failover |
 | 20 | Engine gRPC server | `engine_grpc` binary, gRPC on :8443, all RPCs wired |
+| 21 | Prometheus metrics | HTTP endpoint on :9090, gauges/counters/histograms |
+| 22 | `dbctl` CLI | `tls init`, `cluster status`, `files list/info/versions/delete` |
 
 ### C# Client
 | Component | Status |
