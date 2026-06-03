@@ -14,6 +14,8 @@ EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::st
  rs_->wait_for_leader(3000000);
  std::vector<StorageClient*> cp;for(auto&x:sc_)cp.push_back(x.get());
  engine_=std::make_unique<Engine>(c,rc_.get(),cp);
+ heartbeat_=std::make_unique<HeartbeatService>(cp,rc_.get(),5);
+ heartbeat_->start();
 }
 EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
  R r;try{auto s=engine_->open_session(gid,tid,lid,ts,ec,fed);

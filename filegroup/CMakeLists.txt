@@ -238,6 +238,7 @@ add_executable(engine_grpc
     $<TARGET_OBJECTS:filegroup_storage>
     $<TARGET_OBJECTS:filegroup_engine>
     $<TARGET_OBJECTS:filegroup_metrics>
+    $<TARGET_OBJECTS:filegroup_heartbeat>
 )
 target_include_directories(engine_grpc PRIVATE ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(engine_grpc PRIVATE
