@@ -118,7 +118,7 @@ void FileIndex::apply_version_deleted(const VersionDeletedEntry& e) {
     auto vit = fit->second.versions.find(e.version_number);
     if (vit == fit->second.versions.end()) return;
     
-    vit->second.state = VersionState::DELETED;
+    vit->second.state = VersionState::MARKED_DELETED;
 }
 
 void FileIndex::apply_file_deleted(const FileDeletedEntry& e) {

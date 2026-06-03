@@ -113,7 +113,7 @@ std::vector<uint32_t> Engine::resume_session(uint64_t sid){
 }
 std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
- if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::DELETED))return{};
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return{};
  std::vector<uint8_t> r;
  for(uint32_t ci=0;ci<ve->chunk_count;ci++){
   ChunkLoc l;

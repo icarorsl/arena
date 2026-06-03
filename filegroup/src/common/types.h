@@ -15,9 +15,10 @@ enum class VersionState : uint8_t {
     UPLOADING = 0x00,
     COMPLETE = 0x01,
     SUPERSEDED = 0x02,
-    DELETED = 0x03,
+    DELETED = 0x03,           // Data reclaimed by compaction, only metadata remains
     EXPIRED = 0x04,
     SESSION_TIMED_OUT = 0x05,
+    MARKED_DELETED = 0x06,    // User deleted, data still on disk, playable/restorable
 };
 
 // Encryption algorithm
@@ -93,6 +94,7 @@ inline std::string version_state_to_string(VersionState state) {
         case VersionState::DELETED:          return "DELETED";
         case VersionState::EXPIRED:          return "EXPIRED";
         case VersionState::SESSION_TIMED_OUT: return "SESSION_TIMED_OUT";
+        case VersionState::MARKED_DELETED:   return "MarkedDeleted";
         default:                             return "UNKNOWN";
     }
 }
