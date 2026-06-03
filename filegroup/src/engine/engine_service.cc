@@ -16,6 +16,8 @@ EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::st
  engine_=std::make_unique<Engine>(c,rc_.get(),cp);
  heartbeat_=std::make_unique<HeartbeatService>(cp,rc_.get(),5);
  heartbeat_->start();
+ expiry_=std::make_unique<ExpiryService>(rc_.get(),60);
+ expiry_->start();
 }
 EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
  R r;try{auto s=engine_->open_session(gid,tid,lid,ts,ec,fed);

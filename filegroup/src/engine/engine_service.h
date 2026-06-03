@@ -10,6 +10,7 @@
 #include "registry/registry_service.h"
 #include "storage/storage_node_service.h"
 #include "heartbeat/heartbeat_service.h"
+#include "expiry/expiry_service.h"
 namespace filegroup {
 class EngineServer {
 public:
@@ -42,6 +43,7 @@ private:
     ClusterConfig config_; MetricsServer* metrics_=nullptr;
     std::unique_ptr<RegistryServer> rs_;
     std::unique_ptr<HeartbeatService> heartbeat_;
+    std::unique_ptr<ExpiryService> expiry_;
     std::vector<std::unique_ptr<StorageServer>> ss_; std::vector<std::unique_ptr<StorageClient>> sc_;
     std::unique_ptr<RegistryClient> rc_; std::unique_ptr<Engine> engine_;
 };

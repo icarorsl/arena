@@ -1,65 +1,46 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
-#include <string>
+#include <mutex>
+#include <thread>
 #include <vector>
-#include <map>
+
+#include "common/types.h"
 
 namespace filegroup {
 
-/**
- * Expiry Scanner and Cleanup Service (Phase 1)
- *
- * Manages TTL-based data expiry:
- * 1. Periodic expiry checking
- * 2. Version expiration when TTL exceeded
- * 3. Chunk cleanup from storage nodes
- * 4. Manifest log compaction
- */
+class RegistryClient;
 
-struct ExpiryStats {
-    uint64_t versions_expired;
-    uint64_t chunks_deleted;
-    uint64_t storage_freed_bytes;
-    uint64_t last_scan_us;
-};
+// ============================================================================
+// ExpiryService — background scanner that marks expired versions as DELETED
+// ============================================================================
 
 class ExpiryService {
 public:
-    ExpiryService();
-    
-    /**
-     * Run expiry scanning cycle.
-     *
-     * Checks all versions and files for expiration,
-     * marks expired versions, and queues chunks for deletion.
-     *
-     * Returns:
-     *   Statistics about expirations performed
-     */
-    ExpiryStats run_expiry_cycle();
-    
-    /**
-     * Check if file/version has expired.
-     *
-     * Returns:
-     *   true if past expiration time
-     */
-    bool is_expired(uint64_t expires_at_us);
-    
-    /**
-     * Get expiry statistics.
-     */
-    ExpiryStats get_stats() const;
-    
-    /**
-     * Set scan interval.
-     */
-    void set_scan_interval_us(uint64_t interval_us);
+    ExpiryService(RegistryClient* registry, uint64_t interval_sec = 60);
+    ~ExpiryService();
+
+    void start();
+    void stop();
+
+    // Stats
+    uint64_t versions_expired() const { return versions_expired_; }
+    uint64_t last_scan_us() const { return last_scan_us_; }
 
 private:
-    ExpiryStats stats_;
-    uint64_t scan_interval_us_ = 60000000;  // 60 seconds default
+    void run();
+    void scan();
+
+    RegistryClient* registry_;
+    uint64_t interval_us_;
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+
+    mutable std::mutex stats_mutex_;
+    uint64_t versions_expired_ = 0;
+    uint64_t last_scan_us_ = 0;
 };
 
 }  // namespace filegroup
