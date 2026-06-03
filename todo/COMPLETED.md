@@ -54,3 +54,4 @@
 | Anti-forgery fix | ✅ `_ViewImports.cshtml` enables tag helpers, `_ViewStart.cshtml` enables layout |
 | Video streaming | ✅ gRPC→HTTP chunked streaming, no buffering |
 | Metrics wired | ✅ `MetricsServer` started in engine, wired to upload/read operations |
+| Segment compaction (Step 17) | ✅ Background `CompactionService` every 60s, scans .seg files, filters dead chunks via FileIndex, rewrites compacted segments, updates Engine chunk locs |

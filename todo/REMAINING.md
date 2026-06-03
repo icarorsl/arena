@@ -1,10 +1,9 @@
 # FILE Group — Remaining Work
 
-## ⚠️ Stubbed (Steps 17, 19)
+## ⚠️ Stubbed (Step 19)
 
 | Step | Component | What's missing |
 |---|---|---|
-| 17 | Segment compaction | Read non-deleted chunks, rewrite to new segment, update locations |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
 
 ## 🆕 Dashboard & API gaps
