@@ -282,7 +282,13 @@ void FileIndex::apply_table_created(const TableCreatedEntry& e) {
     t.encryption = static_cast<EncryptionAlgo>(e.encryption);
     t.max_versions = e.max_versions;
     t.expiry_granularity = static_cast<ExpiryGranularity>(e.expiry_granularity);
-    tables_.push_back(std::move(t));
+    // Replace if same (group_id, table_id) already exists, else append
+    for (auto& existing : tables_) {
+        if (existing.group_id == t.group_id && existing.table_id == t.table_id) {
+            existing = std::move(t);
+            return;
+        }
+    }    tables_.push_back(std::move(t));
 }
 
 std::vector<TableEntry> FileIndex::get_tables() const {
