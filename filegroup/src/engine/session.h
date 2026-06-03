@@ -11,6 +11,7 @@ struct UploadSession {
     uint16_t table_id=0; uint32_t group_id=0,version_number=0,expected_chunks=0,content_checksum=0;
     VersionState state=VersionState::UPLOADING;
     uint8_t resolved_replication=0;
+    uint32_t resolved_max_versions=0;
     EncryptionAlgo resolved_encryption=EncryptionAlgo::NONE;
     SegmentType segment_type=SegmentType::STANDARD;
     std::string page_bucket;

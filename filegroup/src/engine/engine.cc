@@ -24,6 +24,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  }
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
+ auto mv=resolve_max_versions(*grp,tbl);
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
  uint64_t sid=registry_->next_session_id(),fid=registry_->next_file_id(),lid2=lid?lid:registry_->next_logical_file_id(); if(!lid)lid=lid2;
  uint32_t vn=1;
@@ -39,6 +40,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  s.state=VersionState::UPLOADING; s.created_at_us=now_us(); s.last_activity_us=s.created_at_us;
  s.expected_chunks=cc; s.resolved_chunk_size=cs; s.resolved_replication=rf;
  s.resolved_expires_at=ea; s.resolved_encryption=enc; s.segment_type=st;
+ s.resolved_max_versions=mv;
  s.chunk_assignments=std::move(as);
  SessionOpenEntry e; e.session_id=sid;e.file_id=fid;e.logical_file_id=lid;
  e.table_id=(uint16_t)tid;e.group_id=gid;e.version_number=vn;
@@ -72,6 +74,24 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs){
  VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.total_size=s->total_bytes;e.chunk_count=(uint32_t)s->confirmed_chunks.size();e.created_at_us=s->created_at_us;
  registry_->append_entry((uint32_t)ManifestEntryType::VERSION_COMPLETE,&e,sizeof(e));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
+ // Enforce max_versions
+ if(s->resolved_max_versions>0){
+  auto* f=registry_->get_file(s->logical_file_id);
+  if(f){
+   std::vector<uint32_t> complete_versions;
+   for(auto&[vn,ver]:f->versions) if(ver.state==VersionState::COMPLETE) complete_versions.push_back(vn);
+   std::sort(complete_versions.begin(),complete_versions.end());
+   while(complete_versions.size()>s->resolved_max_versions){
+    uint32_t oldest_vn=complete_versions.front();
+    VersionDeletedEntry vd;vd.file_id=f->versions.at(oldest_vn).file_id;vd.logical_file_id=s->logical_file_id;vd.version_number=oldest_vn;
+    registry_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&vd,sizeof(vd));
+    MaxVersionsEnforcedEntry mv;mv.logical_file_id=s->logical_file_id;mv.deleted_version_number=oldest_vn;mv.deleted_file_id=f->versions.at(oldest_vn).file_id;
+    registry_->append_entry((uint32_t)ManifestEntryType::MAX_VERSIONS_ENFORCED,&mv,sizeof(mv));
+    std::cout << "[engine] max_versions: deleted v" << oldest_vn << " of file " << s->logical_file_id << "\n";
+    complete_versions.erase(complete_versions.begin());
+   }
+  }
+ }
  return true;
 }
 std::vector<uint32_t> Engine::resume_session(uint64_t sid){
