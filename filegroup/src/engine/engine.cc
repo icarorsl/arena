@@ -113,7 +113,18 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
  if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED))return{};
  std::vector<uint8_t> r;
- for(uint32_t ci=0;ci<ve->chunk_count;ci++){ChunkLoc l;{std::lock_guard<std::mutex>lk(chunks_mutex_);auto fit=chunk_locs_.find(ve->file_id);if(fit==chunk_locs_.end())return{};auto cit=fit->second.find(ci);if(cit==fit->second.end())return{};l=cit->second;}
+ for(uint32_t ci=0;ci<ve->chunk_count;ci++){
+  ChunkLoc l;
+  {std::lock_guard<std::mutex>lk(chunks_mutex_);
+   auto fit=chunk_locs_.find(ve->file_id);
+   if(fit!=chunk_locs_.end()){auto cit=fit->second.find(ci);if(cit!=fit->second.end())l=cit->second;}
+  }
+  // Fall back to VersionEntry.chunks (populated from Raft replay)
+  if(l.sf.empty()&&ci<ve->chunks.size()&&!ve->chunks[ci].replicas.empty()){
+   auto& rep=ve->chunks[ci].replicas[0];
+   l.sf=rep.segment_file;l.off=rep.offset;l.sz=ve->chunks[ci].chunk_size_actual;
+  }
+  if(l.sf.empty())return{};
   bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}if(!ok)return{};}
  if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum)return{};
  return r;
