@@ -98,12 +98,12 @@
                     <td>
                         @if (v.State != Filegroup.Engine.VersionState.VersionDeleted)
                         {
-                            <form method="post" asp-page-handler="DeleteVersion" asp-route-id="@RouteData.Values["id"]" asp-route-version="@v.VersionNumber" onsubmit="return confirm('Delete version @v.VersionNumber?')" style="margin:0;">
+                            <a href="/Play/@RouteData.Values["id"]?version=@v.VersionNumber" class="btn" style="color:var(--ok);border-color:var(--ok);cursor:pointer;font-size:.75rem;padding:.2rem .5rem;text-decoration:none;" title="Play v@(v.VersionNumber)">▶</a>
+                            <form method="post" asp-page-handler="DeleteVersion" asp-route-id="@RouteData.Values["id"]" asp-route-version="@v.VersionNumber" onsubmit="return confirm('Delete version @v.VersionNumber?')" style="margin:0;display:inline;">
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="btn" style="color:var(--err);border-color:var(--err);cursor:pointer;font-size:.75rem;padding:.2rem .5rem;">✕</button>
                             </form>
                         }
-                    </td>
                 </tr>
             }
             </tbody>

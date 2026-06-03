@@ -90,11 +90,11 @@ public class FileModel : PageModel
         return RedirectToPage(new { id });
     }
 
-    public async Task<IActionResult> OnGetDownloadAsync(long id)
+    public async Task<IActionResult> OnGetDownloadAsync(long id, [FromQuery] uint version = 0)
     {
         try
         {
-            using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id });
+            using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
 
             Response.ContentType = "application/octet-stream";
             Response.Headers["Accept-Ranges"] = "bytes";
