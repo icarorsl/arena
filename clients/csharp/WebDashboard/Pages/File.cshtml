@@ -79,6 +79,7 @@ else if (Model.FileInfo != null)
                     <th>Encryption</th>
                     <th>Expires</th>
                     <th>Created</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -93,6 +94,15 @@ else if (Model.FileInfo != null)
                     <td>@v.Encryption</td>
                     <td class="mono">@(v.ExpiresAtUs == 0 ? "never" : FormatTimestamp(v.ExpiresAtUs))</td>
                     <td class="mono" style="font-size:.8rem;">@FormatTimestamp(v.CreatedAtUs)</td>
+                    <td>
+                        @if (v.State != Filegroup.Engine.VersionState.VersionDeleted)
+                        {
+                            <form method="post" asp-page-handler="DeleteVersion" asp-route-id="@RouteData.Values["id"]" asp-route-version="@v.VersionNumber" onsubmit="return confirm('Delete version @v.VersionNumber?')" style="margin:0;">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="btn" style="color:var(--err);border-color:var(--err);cursor:pointer;font-size:.75rem;padding:.2rem .5rem;">✕</button>
+                            </form>
+                        }
+                    </td>
                 </tr>
             }
             </tbody>

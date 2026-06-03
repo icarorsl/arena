@@ -63,6 +63,23 @@ public class FileModel : PageModel
         }
     }
 
+    public async Task<IActionResult> OnPostDeleteVersionAsync(long id, uint version)
+    {
+        try
+        {
+            await _client.DeleteVersionAsync(new DeleteVersionRequest
+            {
+                LogicalFileId = (ulong)id,
+                VersionNumber = version
+            });
+        }
+        catch (Exception ex)
+        {
+            Error = $"Delete version failed: {ex.Message}";
+        }
+        return RedirectToPage(new { id });
+    }
+
     public async Task<IActionResult> OnGetDownloadAsync(long id)
     {
         try
