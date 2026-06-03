@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace WebDashboard.Pages;
 
+[IgnoreAntiforgeryToken]
 public class UploadModel : PageModel
 {
     private readonly Engine.EngineClient _client;

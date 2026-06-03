@@ -5,6 +5,7 @@ using Eng = Filegroup.Engine;
 
 namespace WebDashboard.Pages;
 
+[IgnoreAntiforgeryToken]
 public class FileModel : PageModel
 {
     private readonly Engine.EngineClient _client;
