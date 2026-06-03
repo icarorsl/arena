@@ -21,7 +21,7 @@ public class StatusModel : PageModel
         {
             var files = await _client.ListFilesAsync(new ListFilesRequest
             {
-                GroupId = 1, TableId = 1, PageSize = 1000
+                GroupId = 0, TableId = 0, PageSize = 1000
             });
             FileCount = (uint)files.Files.Count;
             EngineOk = true;

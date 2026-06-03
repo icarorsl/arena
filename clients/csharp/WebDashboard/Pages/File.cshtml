@@ -138,6 +138,7 @@
         Filegroup.Engine.VersionState.VersionComplete => "ok",
         Filegroup.Engine.VersionState.VersionUploading => "warn",
         Filegroup.Engine.VersionState.VersionDeleted or Filegroup.Engine.VersionState.VersionExpired => "err",
+        Filegroup.Engine.VersionState.VersionMarkedDeleted => "warn",
         _ => ""
     };
 
