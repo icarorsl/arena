@@ -69,12 +69,13 @@ std::pair<bool, uint64_t> RaftNode::propose(uint32_t entry_type, const void* bod
 
     persistent_.log.push_back(entry);
 
-    // Leader's own match_index is always up to date
     leader_state_.match_index[config_.local_node_id] = entry.index;
 
-    // Signal replication thread
-    has_new_entries_ = true;
-    cv_.notify_all();
+    // Phase 1: single-node — commit and apply immediately
+    volatile_.commit_index = entry.index;
+    if (apply_callback_) {
+        apply_callback_(entry_type, entry.data.data(), (uint16_t)entry.data.size(), entry.index);
+    }
 
     persist_state();
 
