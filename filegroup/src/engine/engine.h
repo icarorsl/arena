@@ -36,6 +36,9 @@ public:
     /// Get storage nodes for direct segment access (compaction).
     const std::vector<StorageClient*>& storage_nodes() const { return storage_nodes_; }
 
+    /// Rebuild chunk_locs_ from segment files on disk (after restart).
+    void rebuild_chunk_locations();
+
 private:
     const FileGroupConfig* find_group(uint32_t gid) const;
     const FileTableConfig* find_table(uint32_t tid) const;

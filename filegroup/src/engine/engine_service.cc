@@ -16,6 +16,7 @@ EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::st
  rs_->wait_for_leader(3000000);
  std::vector<StorageClient*> cp;for(auto&x:sc_)cp.push_back(x.get());
  engine_=std::make_unique<Engine>(c,rc_.get(),cp);
+ engine_->rebuild_chunk_locations();
  heartbeat_=std::make_unique<HeartbeatService>(cp,rc_.get(),5);
  heartbeat_->start();
  expiry_=std::make_unique<ExpiryService>(rc_.get(),60);

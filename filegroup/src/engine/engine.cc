@@ -1,7 +1,9 @@
 #include "engine/engine.h"
 #include "common/clock.h"
 #include "common/crc32c.h"
+#include "segment/segment.h"
 #include <algorithm>
+#include <dirent.h>
 #include <iostream>
 namespace filegroup {
 Engine::Engine(const ClusterConfig& c, RegistryClient* r, const std::vector<StorageClient*>& sn):config_(c),registry_(r),storage_nodes_(sn){uint16_t n=1;for(auto* s:sn)if(s)node_map_[n++]=s;}
@@ -134,6 +136,39 @@ const UploadSession* Engine::get_session(uint64_t sid)const{std::lock_guard<std:
 void Engine::update_chunk_location(uint64_t fid,uint32_t ci,const std::string& sf,uint64_t off,uint64_t sz){
  std::lock_guard<std::mutex> lk(chunks_mutex_);
  chunk_locs_[fid][ci]={sf,off,sz};
+}
+
+void Engine::rebuild_chunk_locations(){
+ // Scan all storage node data dirs for segment files and rebuild chunk_locs_
+ // This is needed after restart because chunk_locs_ is in-memory only.
+ for(auto* sc:storage_nodes_){
+  if(!sc||!sc->ping())continue;
+  auto* server=sc->server();
+  auto dir=server->data_dir();
+  DIR* dp=opendir(dir.c_str());
+  if(!dp)continue;
+  struct dirent* de;
+  while((de=readdir(dp))!=nullptr){
+   std::string name(de->d_name);
+   if(name.size()<4||name.substr(name.size()-4)!=".seg")continue;
+   std::string path=dir+"/"+name;
+   try{
+    Segment seg(path);
+    uint32_t cc=seg.chunk_count();
+    uint64_t cursor=sizeof(SegmentFileHeader);
+    for(uint32_t i=0;i<cc;i++){
+     auto ceh=seg.read_chunk_header_at(cursor);
+     if(!ceh.is_deleted){
+      uint64_t data_off=cursor+sizeof(ChunkEntryHeader);
+      chunk_locs_[ceh.file_id][ceh.chunk_index]={path,data_off,ceh.chunk_size};
+     }
+     cursor+=sizeof(ChunkEntryHeader)+ceh.chunk_size;
+    }
+   }catch(...){}
+  }
+  closedir(dp);
+ }
+ std::cerr<<"[engine] rebuilt chunk locations from disk"<<std::endl;
 }
 const FileGroupConfig* Engine::find_group(uint32_t gid)const{for(auto&g:config_.groups)if(g.group_id==gid)return&g;return nullptr;}
 const FileTableConfig* Engine::find_table(uint32_t tid)const{for(auto&t:config_.tables)if(t.table_id==tid)return&t;return nullptr;}
