@@ -10,21 +10,52 @@ public class FilesModel : PageModel
     private readonly Engine.EngineClient _client;
 
     public List<Eng.FileInfo> Files { get; set; } = new();
+    public List<TableRef> Tables { get; set; } = new();
+    public uint SelectedGroup { get; set; }
+    public uint SelectedTable { get; set; }
     public string? Error { get; set; }
+
+    public record TableRef(uint TableId, uint GroupId, string Name);
 
     public FilesModel(Engine.EngineClient client) => _client = client;
 
-    public async Task OnGetAsync([FromQuery] uint group = 1, [FromQuery] uint table = 1)
+    public async Task OnGetAsync([FromQuery] uint group = 0, [FromQuery] uint table = 0)
     {
+        SelectedGroup = group;
+        SelectedTable = table;
         try
         {
-            var resp = await _client.ListFilesAsync(new ListFilesRequest
+            // Load dynamic tables
+            var tableResp = await _client.GetTablesAsync(new GetTablesRequest());
+            Tables = tableResp.Tables
+                .Select(t => new TableRef(t.TableId, t.GroupId, t.Name))
+                .OrderBy(t => t.GroupId).ThenBy(t => t.TableId)
+                .ToList();
+
+            // Load files: if no filter, query all tables
+            if (group == 0 || table == 0)
             {
-                GroupId = group,
-                TableId = table,
-                PageSize = 500
-            });
-            Files = resp.Files.ToList();
+                foreach (var t in Tables)
+                {
+                    var resp = await _client.ListFilesAsync(new ListFilesRequest
+                    {
+                        GroupId = t.GroupId,
+                        TableId = t.TableId,
+                        PageSize = 500
+                    });
+                    Files.AddRange(resp.Files);
+                }
+            }
+            else
+            {
+                var resp = await _client.ListFilesAsync(new ListFilesRequest
+                {
+                    GroupId = group,
+                    TableId = table,
+                    PageSize = 500
+                });
+                Files = resp.Files.ToList();
+            }
         }
         catch (Exception ex)
         {
