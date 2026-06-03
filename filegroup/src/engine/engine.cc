@@ -25,6 +25,15 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto mv=resolve_max_versions(*grp,tbl);
+ // If adding a new version to an existing file, check max_versions cap
+ if(lid && mv>0){
+  auto* ef=registry_->get_file(lid);
+  if(ef){
+   uint32_t complete_count=0;
+   for(auto&[vn,ver]:ef->versions) if(ver.state==VersionState::COMPLETE) complete_count++;
+   if(complete_count>=mv) throw std::runtime_error("max_versions="+std::to_string(mv)+" reached ("+std::to_string(complete_count)+" live versions); delete a version first");
+  }
+ }
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
  uint64_t sid=registry_->next_session_id(),fid=registry_->next_file_id(),lid2=lid?lid:registry_->next_logical_file_id(); if(!lid)lid=lid2;
  uint32_t vn=1;
