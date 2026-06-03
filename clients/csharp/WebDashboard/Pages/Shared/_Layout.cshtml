@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — FILE Group</title>
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+    <header>
+        <h1>FILE Group Dashboard</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/Files">Files</a>
+            <a href="http://localhost:9090/metrics" target="_blank">Metrics ↗</a>
+        </nav>
+    </header>
+    <main>
+        @RenderBody()
+    </main>
+    <footer>
+        FILE Group Phase 1 &middot; <span id="clock">—</span>
+    </footer>
+    <script>
+        document.getElementById('clock').textContent = new Date().toISOString();
+    </script>
+</body>
+</html>

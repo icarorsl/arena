@@ -7,6 +7,7 @@ High-performance C++ distributed file storage system with Raft-replicated metada
 ```bash
 docker compose up -d                    # Start engine on :8443
 cd ../clients/csharp && dotnet run --project DemoLocal   # Run demo
+cd ../clients/csharp && dotnet run --project WebDashboard # Web UI at :5001
 ```
 
 ## Quick Start (Native)

@@ -1,0 +1,115 @@
+@page "{id:long}"
+@model WebDashboard.Pages.FileModel
+@{
+    ViewData["Title"] = $"File {RouteData.Values["id"]}";
+}
+
+<a href="/Files" class="back-link">← Back to files</a>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="status" style="border-color:var(--err);margin-bottom:1rem;">
+        <p style="color:var(--err);">@Model.Error</p>
+    </div>
+}
+
+@if (Model.FileInfo != null)
+{
+    <h2>File #@Model.FileInfo.LogicalFileId</h2>
+
+    <div class="meta-grid">
+        <div class="meta-card">
+            <div class="label">Logical ID</div>
+            <div class="value mono">@Model.FileInfo.LogicalFileId</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">Group / Table</div>
+            <div class="value">@Model.FileInfo.GroupId / @Model.FileInfo.TableId</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">Latest Version</div>
+            <div class="value mono">@Model.FileInfo.LatestVersion</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">State</div>
+            <div class="value"><span class="badge @(Model.FileInfo.State == Filegroup.Engine.FileState.FileActive ? "ok" : "err")">@Model.FileInfo.State</span></div>
+        </div>
+        <div class="meta-card">
+            <div class="label">Total Size</div>
+            <div class="value mono">@FormatSize(Model.FileInfo.TotalSize)</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">Created</div>
+            <div class="value mono">@FormatTimestamp(Model.FileInfo.CreatedAtUs)</div>
+        </div>
+    </div>
+
+    <h3 style="margin-top:2rem;">Versions (@Model.Versions.Count)</h3>
+
+    @if (Model.Versions.Count == 0)
+    {
+        <p class="empty">No versions.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>File ID</th>
+                    <th>Version #</th>
+                    <th>State</th>
+                    <th>Size</th>
+                    <th>Chunks</th>
+                    <th>Encryption</th>
+                    <th>Expires</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var v in Model.Versions)
+            {
+                <tr>
+                    <td class="mono">@v.FileId</td>
+                    <td class="mono">@v.VersionNumber</td>
+                    <td><span class="badge @StateBadge(v.State)">@v.State</span></td>
+                    <td class="mono">@FormatSize(v.TotalSize)</td>
+                    <td class="mono">@v.ChunkCount</td>
+                    <td>@v.Encryption</td>
+                    <td class="mono">@(v.ExpiresAtUs == 0 ? "never" : FormatTimestamp(v.ExpiresAtUs))</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+}
+
+@functions {
+    static string FormatSize(ulong bytes)
+    {
+        if (bytes == 0) return "—";
+        string[] suf = { "B", "KB", "MB", "GB" };
+        int i = 0;
+        double d = bytes;
+        while (d >= 1024 && i < suf.Length - 1) { d /= 1024; i++; }
+        return d.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " " + suf[i];
+    }
+
+    static string FormatTimestamp(ulong us)
+    {
+        if (us == 0) return "—";
+        try
+        {
+            var dt = DateTimeOffset.FromUnixTimeSeconds((long)(us / 1_000_000));
+            return dt.ToString("yyyy-MM-dd HH:mm:ss");
+        }
+        catch { return us.ToString(); }
+    }
+
+    static string StateBadge(Filegroup.Engine.VersionState s) => s switch
+    {
+        Filegroup.Engine.VersionState.VersionComplete => "ok",
+        Filegroup.Engine.VersionState.VersionUploading => "warn",
+        Filegroup.Engine.VersionState.VersionDeleted or Filegroup.Engine.VersionState.VersionExpired => "err",
+        _ => ""
+    };
+
+}

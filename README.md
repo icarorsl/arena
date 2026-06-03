@@ -6,6 +6,7 @@ Arena is a high-performance distributed file storage system built in C++ with a 
 |---|---|---|---|
 | Engine | `filegroup/` | C++20 | ✅ Phase 1 (Steps 1–13, 20–22) |
 | C# Client | `clients/csharp/` | C# / .NET 8 | ✅ 12/12 tests passing |
+| Web Dashboard | `clients/csharp/WebDashboard/` | ASP.NET Core Razor Pages | ✅ Browsing live |
 | Docker | `filegroup/docker-compose.yml` | Docker | ✅ End-to-end working |
 
 ## Quick Start
