@@ -1,7 +1,9 @@
 #include "engine/engine_service.h"
 #include <algorithm>
+#include <sys/stat.h>
 namespace filegroup {
 EngineServer::EngineServer(const ClusterConfig& c,const std::string& dr):config_(c){
+ mkdir(dr.c_str(), 0755); // ensure parent dir exists
  for(size_t i=0;i<c.storage_nodes.size();i++){auto& nc=c.storage_nodes[i];
   auto s=std::make_unique<StorageServer>(nc.node_id,dr+"/node_"+std::to_string(nc.node_id));
   auto cl=std::make_unique<StorageClient>(s.get());ss_.push_back(std::move(s));sc_.push_back(std::move(cl));}

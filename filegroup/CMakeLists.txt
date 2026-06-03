@@ -14,7 +14,7 @@ endif()
 
 # Find required packages
 find_package(OpenSSL REQUIRED)
-find_package(Protobuf CONFIG REQUIRED)
+find_package(Protobuf REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(GTest QUIET)
 

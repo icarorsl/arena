@@ -1,6 +1,7 @@
 #include "manifest/file_index.h"
 
 #include <algorithm>
+#include <mutex>
 
 namespace filegroup {
 
