@@ -13,16 +13,13 @@ public class FileModel : PageModel
     public Eng.FileInfo? FileInfo { get; set; }
     public List<VersionInfo> Versions { get; set; } = new();
     public string? Error { get; set; }
-    public bool Deleted { get; set; }
     public bool CanAddVersion { get; set; }
     public uint MaxVersions { get; set; }
 
     public FileModel(Engine.EngineClient client) => _client = client;
 
-    public async Task OnGetAsync(long id, [FromQuery] bool deleted = false)
+    public async Task OnGetAsync(long id)
     {
-        Deleted = deleted;
-
         try
         {
             var info = await _client.GetFileInfoAsync(new GetFileInfoRequest
@@ -67,7 +64,7 @@ public class FileModel : PageModel
         try
         {
             await _client.DeleteFileAsync(new DeleteFileRequest { LogicalFileId = (ulong)id });
-            return RedirectToPage("/Files");
+            return RedirectToPage(new { id });
         }
         catch (Exception ex)
         {

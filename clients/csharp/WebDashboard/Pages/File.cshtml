@@ -13,13 +13,7 @@
     </div>
 }
 
-@if (Model.Deleted)
-{
-    <div class="status" style="border-color:var(--ok);margin-bottom:1rem;">
-        <p style="color:var(--ok);">File deleted. <a href="/Files">Back to files →</a></p>
-    </div>
-}
-else if (Model.FileInfo != null)
+@if (Model.FileInfo != null)
 {
     <div class="bar">
         <h2>File #@Model.FileInfo.LogicalFileId</h2>
