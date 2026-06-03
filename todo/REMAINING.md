@@ -4,7 +4,7 @@
 
 | Step | Component | What's missing |
 |---|---|---|
-| 14 | Versioning enforcement | Dedicated integration tests for max_versions auto-deletion; per-version `VERSION_DELETED` manifest entries on file delete (currently only writes single `FILE_DELETED`) |
+| 14 | Versioning enforcement | Per-version `VERSION_DELETED` manifest entries on file delete (currently only writes single `FILE_DELETED`); integration tests |
 | | | **Current delete behavior:** Manifest-only. `FILE_DELETED` → in-memory `VersionState::DELETED`. Segment file headers and chunk data on disk are untouched. Physical disk reclamation needs Step 17 (compaction). |
 | 17 | Segment compaction | Read non-deleted chunks, rewrite to new segment, update locations |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
