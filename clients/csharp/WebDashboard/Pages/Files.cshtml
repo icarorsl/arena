@@ -10,14 +10,12 @@
         <a href="/Upload?table=@Model.SelectedTable" class="btn" style="border-color:var(--accent);">+ Upload</a>
     <form method="get" class="actions" style="margin:0;">
         <select name="group" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;font-size:.85rem;">
-            <option value="0">All Groups</option>
             @foreach (var t in Model.Tables.Select(t => t.GroupId).Distinct())
             {
                 <!option value="@t" selected=@(Model.SelectedGroup == t)>Group @t</!option>
             }
         </select>
         <select name="table" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;font-size:.85rem;">
-            <option value="0">All Tables</option>
             @foreach (var t in Model.Tables)
             {
                 <!option value="@t.TableId" selected=@(Model.SelectedTable == t.TableId)>@t.Name (@t.TableId)</!option>

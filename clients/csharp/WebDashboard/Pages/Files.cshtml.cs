@@ -25,37 +25,34 @@ public class FilesModel : PageModel
         SelectedTable = table;
         try
         {
-            // Load dynamic tables
             var tableResp = await _client.GetTablesAsync(new GetTablesRequest());
             Tables = tableResp.Tables
                 .Select(t => new TableRef(t.TableId, t.GroupId, t.Name))
                 .OrderBy(t => t.GroupId).ThenBy(t => t.TableId)
                 .ToList();
 
-            // Load files: if no filter, query all tables
-            if (group == 0 || table == 0)
+            // Default to first table with files if none selected
+            if (SelectedGroup == 0 || SelectedTable == 0)
             {
-                foreach (var t in Tables)
+                if (Tables.Count > 0)
                 {
-                    var resp = await _client.ListFilesAsync(new ListFilesRequest
-                    {
-                        GroupId = t.GroupId,
-                        TableId = t.TableId,
-                        PageSize = 500
-                    });
-                    Files.AddRange(resp.Files);
+                    SelectedGroup = Tables[0].GroupId;
+                    SelectedTable = Tables[0].TableId;
+                }
+                else
+                {
+                    SelectedGroup = 1;
+                    SelectedTable = 1;
                 }
             }
-            else
+
+            var resp = await _client.ListFilesAsync(new ListFilesRequest
             {
-                var resp = await _client.ListFilesAsync(new ListFilesRequest
-                {
-                    GroupId = group,
-                    TableId = table,
-                    PageSize = 500
-                });
-                Files = resp.Files.ToList();
-            }
+                GroupId = SelectedGroup,
+                TableId = SelectedTable,
+                PageSize = 500
+            });
+            Files = resp.Files.ToList();
         }
         catch (Exception ex)
         {
