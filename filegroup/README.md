@@ -2,35 +2,67 @@
 
 High-performance C++ distributed file storage system with Raft-replicated metadata, chunk-based replication, AES-256-GCM encryption, and page-based expiry.
 
-## Architecture
+## Quick Start (Docker)
 
-- **Registry:** 3-node Raft cluster for metadata consensus
-- **Storage Nodes:** Chunk storage with standard and page-based segments
-- **Engine:** Client-facing service with upload/download, versioning, and encryption
-- **Manifest:** Append-only log of operations, replicated via Raft
-- **File Index:** In-memory state from manifest replay
+```bash
+docker compose up -d                    # Start engine on :8443
+cd ../clients/csharp && dotnet run --project DemoLocal   # Run demo
+```
+
+## Quick Start (Native)
+
+```bash
+mkdir build && cd build && cmake .. && make -j$(nproc)
+./engine_grp                            # Start engine on :8443
+cd ../../clients/csharp && dotnet run --project DemoLocal
+```
 
 ## Build
 
 ```bash
 mkdir build && cd build
 cmake ..
-make
-make test
+make -j$(nproc)
+make test                               # 18 C++ tests
+```
+
+## C# Client
+
+```bash
+cd clients/csharp
+dotnet build FileGroup.slnx              # 4 projects
+dotnet test FileGroup.slnx               # 12 C# tests
+
+# Run demos:
+dotnet run --project DemoLocal           # Docker/local (no TLS)
+dotnet run --project Demo                # Production (mTLS + certs)
+```
+
+## CLI
+
+```bash
+./dbctl tls init --nodes 3 --output certs/
+./dbctl cluster status
+./dbctl files list --group 1 --table 1
+./dbctl files info --group 1 --file 42
 ```
 
 ## Dependencies
 
-- C++20 compiler (GCC 10+, Clang 12+, or MSVC 2019+)
+- C++20 compiler (GCC 10+, Clang 12+)
 - CMake 3.20+
 - OpenSSL (libssl-dev)
-- gRPC and Protobuf
+- gRPC + Protobuf
 - Google Test (optional, for tests)
-- TOML++ (optional, will use fallback)
 
 On Ubuntu/Debian:
 ```bash
 sudo apt-get install libssl-dev libgrpc++-dev protobuf-compiler-grpc libprotobuf-dev libgtest-dev cmake
+```
+
+On macOS:
+```bash
+brew install cmake openssl grpc protobuf googletest
 ```
 
 ## Project Structure

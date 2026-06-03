@@ -27,7 +27,15 @@
 | Proto compilation (`engine.proto` → C#) | ✅ |
 | `FileGroupClient` wrapper (mTLS + API key) | ✅ |
 | Proto contract tests (12/12) | ✅ |
-| Demo console app | ✅ |
+| Demo app (mTLS) | ✅ |
+| DemoLocal app (no TLS, for Docker/dev) | ✅ |
 | End-to-end gRPC test (C# → C++) | ✅ |
 
-### Test suites: 18/18 passing
+### Docker
+| Component | Status |
+|---|---|
+| `Dockerfile` for engine | ✅ |
+| `docker-compose.yml` | ✅ |
+| `DemoLocal` connects via http:// | ✅ |
+
+### Test suites: 18/18 C++ + 12/12 C#
