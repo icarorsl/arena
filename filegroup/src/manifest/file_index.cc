@@ -82,14 +82,22 @@ void FileIndex::apply_chunk_confirmed(const ChunkConfirmedEntry& e) {
                 chunk.chunk_checksum = e.chunk_checksum;
                 // Store primary replica from confirmed entry
                 if (e.segment_file[0]) {
-                    chunk.replicas.push_back({e.segment_file, e.segment_offset, ReplicaState::WRITTEN});
+                    ReplicaLocation rep;
+                    rep.segment_file = e.segment_file;
+                    rep.offset = e.segment_offset;
+                    rep.state = ReplicaState::WRITTEN;
+                    chunk.replicas.push_back(rep);
                 }
                 ver.chunks.push_back(chunk);
             } else {
                 cit->chunk_size_actual = e.chunk_size_actual;
                 cit->chunk_checksum = e.chunk_checksum;
                 if (e.segment_file[0] && cit->replicas.empty()) {
-                    cit->replicas.push_back({e.segment_file, e.segment_offset, ReplicaState::WRITTEN});
+                    ReplicaLocation rep;
+                    rep.segment_file = e.segment_file;
+                    rep.offset = e.segment_offset;
+                    rep.state = ReplicaState::WRITTEN;
+                    cit->replicas.push_back(rep);
                 }
             }
             ver.total_size += e.chunk_size_actual;
