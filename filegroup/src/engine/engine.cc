@@ -113,8 +113,7 @@ std::vector<uint32_t> Engine::resume_session(uint64_t sid){
 }
 std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
- if(!ve){std::cerr<<"[read_file] lid="<<lid<<" v="<<v<<" NOT FOUND\n";return{};}
- if(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED){std::cerr<<"[read_file] lid="<<lid<<" v="<<v<<" state="<<(int)ve->state<<" rejected\n";return{};}
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return{};
  std::vector<uint8_t> r;
  for(uint32_t ci=0;ci<ve->chunk_count;ci++){
   ChunkLoc l;
@@ -127,11 +126,9 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
    auto& rep=ve->chunks[ci].replicas[0];
    l.sf=rep.segment_file;l.off=rep.offset;l.sz=ve->chunks[ci].chunk_size_actual;
   }
-  if(l.sf.empty()){std::cerr<<"[read_file] lid="<<lid<<" fid="<<ve->file_id<<" ci="<<ci<<"/"<<ve->chunk_count<<" NO LOCATION (chunks.size="<<ve->chunks.size()<<")\n";return{};}
-  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}
-  if(!ok){std::cerr<<"[read_file] lid="<<lid<<" fid="<<ve->file_id<<" ci="<<ci<<" FETCH FAILED sf="<<l.sf<<" off="<<l.off<<" sz="<<l.sz<<"\n";return{};}
- }
- if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum){std::cerr<<"[read_file] lid="<<lid<<" CHECKSUM MISMATCH\n";return{};}
+  if(l.sf.empty())return{};
+  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}if(!ok)return{};}
+ if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum)return{};
  return r;
 }
 std::vector<uint8_t> Engine::read_chunk(uint64_t lid,uint32_t v,uint32_t ci){auto d=read_file(lid,v);return d;}
@@ -166,8 +163,7 @@ void Engine::rebuild_chunk_locations(){
      }
      cursor+=sizeof(ChunkEntryHeader)+ceh.chunk_size;
     }
-    std::cerr<<"[rebuild] "<<path<<": "<<cc<<" chunks indexed\n";
-   }catch(std::exception& ex){std::cerr<<"[rebuild] "<<path<<": ERROR "<<ex.what()<<"\n";}
+   }catch(...){}
   }
   closedir(dp);
  }
