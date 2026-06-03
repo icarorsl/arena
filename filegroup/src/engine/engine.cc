@@ -72,7 +72,7 @@ bool Engine::write_chunk(uint64_t sid,uint32_t ci,const uint8_t* d,uint64_t sz){
  if(!r.success)return false;
  s->total_bytes+=sz;
  for(auto rid:a->replica_node_ids){auto*rep=get_storage_node(rid);if(rep)rep->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);}
- ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;
+ ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;ce.segment_offset=r.offset;strncpy(ce.segment_file,r.segment_file.c_str(),sizeof(ce.segment_file)-1);ce.segment_file[sizeof(ce.segment_file)-1]=0;
  registry_->append_entry((uint32_t)ManifestEntryType::CHUNK_CONFIRMED,&ce,sizeof(ce));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->confirmed_chunks.insert(ci);}
  {std::lock_guard<std::mutex> lk(chunks_mutex_);chunk_locs_[s->file_id][ci]={r.segment_file,r.offset,sz};}
@@ -113,7 +113,8 @@ std::vector<uint32_t> Engine::resume_session(uint64_t sid){
 }
 std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
- if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return{};
+ if(!ve){std::cerr<<"[read_file] lid="<<lid<<" v="<<v<<" NOT FOUND\n";return{};}
+ if(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED){std::cerr<<"[read_file] lid="<<lid<<" v="<<v<<" state="<<(int)ve->state<<" rejected\n";return{};}
  std::vector<uint8_t> r;
  for(uint32_t ci=0;ci<ve->chunk_count;ci++){
   ChunkLoc l;
@@ -126,9 +127,11 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
    auto& rep=ve->chunks[ci].replicas[0];
    l.sf=rep.segment_file;l.off=rep.offset;l.sz=ve->chunks[ci].chunk_size_actual;
   }
-  if(l.sf.empty())return{};
-  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}if(!ok)return{};}
- if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum)return{};
+  if(l.sf.empty()){std::cerr<<"[read_file] lid="<<lid<<" fid="<<ve->file_id<<" ci="<<ci<<"/"<<ve->chunk_count<<" NO LOCATION (chunks.size="<<ve->chunks.size()<<")\n";return{};}
+  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}
+  if(!ok){std::cerr<<"[read_file] lid="<<lid<<" fid="<<ve->file_id<<" ci="<<ci<<" FETCH FAILED sf="<<l.sf<<" off="<<l.off<<" sz="<<l.sz<<"\n";return{};}
+ }
+ if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum){std::cerr<<"[read_file] lid="<<lid<<" CHECKSUM MISMATCH\n";return{};}
  return r;
 }
 std::vector<uint8_t> Engine::read_chunk(uint64_t lid,uint32_t v,uint32_t ci){auto d=read_file(lid,v);return d;}
@@ -159,12 +162,12 @@ void Engine::rebuild_chunk_locations(){
     for(uint32_t i=0;i<cc;i++){
      auto ceh=seg.read_chunk_header_at(cursor);
      if(!ceh.is_deleted){
-      uint64_t data_off=cursor+sizeof(ChunkEntryHeader);
-      chunk_locs_[ceh.file_id][ceh.chunk_index]={path,data_off,ceh.chunk_size};
+      chunk_locs_[ceh.file_id][ceh.chunk_index]={path,cursor,ceh.chunk_size};
      }
      cursor+=sizeof(ChunkEntryHeader)+ceh.chunk_size;
     }
-   }catch(...){}
+    std::cerr<<"[rebuild] "<<path<<": "<<cc<<" chunks indexed\n";
+   }catch(std::exception& ex){std::cerr<<"[rebuild] "<<path<<": ERROR "<<ex.what()<<"\n";}
   }
   closedir(dp);
  }

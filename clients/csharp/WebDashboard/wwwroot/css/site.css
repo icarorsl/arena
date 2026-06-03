@@ -80,6 +80,7 @@ h3 { font-size: 1rem; margin-bottom: .5rem; color: var(--muted); }
     font-weight: 500;
 }
 .badge.ok { background: #14532d; color: var(--ok); }
+.badge.warn { background: #422006; color: var(--warn); }
 .badge.err { background: #450a0a; color: var(--err); }
 
 /* Table */

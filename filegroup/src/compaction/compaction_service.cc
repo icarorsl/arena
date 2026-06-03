@@ -80,7 +80,8 @@ uint32_t CompactionService::run_once() {
     for (const auto& f : all_files) {
         for (const auto& [vn, ver] : f.versions) {
             if (ver.state == VersionState::COMPLETE ||
-                ver.state == VersionState::SUPERSEDED) {
+                ver.state == VersionState::SUPERSEDED ||
+                ver.state == VersionState::MARKED_DELETED) {
                 live_file_ids.insert(ver.file_id);
             }
         }
@@ -111,12 +112,13 @@ uint32_t CompactionService::run_once() {
 
                 // ---- Pass 1: collect live chunk metadata ----
                 struct LiveChunk {
-                    uint64_t offset;
+                    uint64_t offset;        // header offset in old segment
                     uint64_t file_id;
                     uint32_t chunk_index;
                     uint64_t chunk_size;
                     uint32_t chunk_checksum;
                     bool is_encrypted;
+                    uint64_t new_offset;    // filled in Pass 3
                 };
                 std::vector<LiveChunk> live_chunks;
 
@@ -145,30 +147,32 @@ uint32_t CompactionService::run_once() {
                 if (dead_count == 0) continue;
 
                 // ---- Pass 3: write live chunks to new segment ----
-                std::string new_path = seg_path + ".compact";
-                Segment new_seg(new_path, /*create=*/true);
+                // Write to a temp file, then atomically rename to final path
+                std::string tmp_path = seg_path + ".tmp";
+                {
+                    Segment new_seg(tmp_path, /*create=*/true);
+                    for (auto& lc : live_chunks) {
+                        auto data = old_seg.read_chunk(lc.offset, lc.chunk_size);
+                        if (data.size() != lc.chunk_size) continue;
 
-                for (auto& lc : live_chunks) {
-                    auto data = old_seg.read_chunk(lc.offset, lc.chunk_size);
-                    if (data.size() != lc.chunk_size) continue;
-
-                    uint64_t new_offset = new_seg.write_chunk(
-                        lc.file_id, lc.chunk_index,
-                        data.data(), data.size(),
-                        lc.chunk_checksum, lc.is_encrypted);
-
-                    // Update engine's chunk location
-                    engine_.update_chunk_location(lc.file_id, lc.chunk_index,
-                                                  new_path, new_offset, lc.chunk_size);
-                }
+                        lc.new_offset = new_seg.write_chunk(
+                            lc.file_id, lc.chunk_index,
+                            data.data(), data.size(),
+                            lc.chunk_checksum, lc.is_encrypted);
+                    }
+                } // close new_seg
 
                 // ---- Pass 4: replace old segment with new ----
-                // Close both segments (destructors handle this)
-                // Rename new over old
                 std::string bak_path = seg_path + ".bak";
                 ::rename(seg_path.c_str(), bak_path.c_str());
-                ::rename(new_path.c_str(), seg_path.c_str());
+                ::rename(tmp_path.c_str(), seg_path.c_str());
                 ::unlink(bak_path.c_str());
+
+                // Update engine chunk locations to final path + new offsets
+                for (auto& lc : live_chunks) {
+                    engine_.update_chunk_location(lc.file_id, lc.chunk_index,
+                                                  seg_path, lc.new_offset, lc.chunk_size);
+                }
 
                 segments_compacted++;
                 std::cerr << "[compaction] " << seg_path << ": "

@@ -57,7 +57,8 @@ struct ChunkConfirmedEntry {
     uint64_t chunk_size_actual;    // Actual bytes stored
     uint32_t chunk_checksum;       // CRC32C of plaintext chunk
     uint8_t  replica_count;        // Number of replicas
-    // Replicas follow: (node_id: uint16_t, offset: uint64_t) * replica_count
+    uint64_t segment_offset;       // Offset in segment file (header offset)
+    char     segment_file[256];    // Path to segment file
 };
 
 /**

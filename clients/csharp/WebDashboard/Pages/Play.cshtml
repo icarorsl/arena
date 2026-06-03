@@ -17,10 +17,17 @@
         .err { color: #f87171; text-align: center; padding: 2rem; font-family: sans-serif; }
         .back { position: fixed; top: 1rem; left: 1rem; color: #888; text-decoration: none; font-size: .85rem; font-family: sans-serif; z-index: 10; }
         .back:hover { color: #fff; }
+        .info { position: fixed; top: 1rem; right: 1rem; color: #666; font-family: sans-serif; font-size: .75rem; text-align: right; z-index: 10; line-height: 1.5; }
+        .info span { color: #aaa; }
     </style>
 </head>
 <body>
     <a href="/File/@RouteData.Values["id"]" class="back">← Back</a>
+    <div class="info">
+        <div>Logical File Id<span>#@RouteData.Values["id"]</span></div>
+        <div>Table <span>@Model.TableId</span> · Group <span>@Model.GroupId</span></div>
+        <div>Version <span>@Model.VersionNumber</span> · <span>@Model.VersionState</span></div>
+    </div>
 
     @if (!string.IsNullOrEmpty(Model.Error))
     {
