@@ -28,8 +28,9 @@ Testing/
 *.a
 *.so
 *.dylib
-engine
-test_*
+build/engine
+build/engine_grpc
+build/test_*
 
 # Protobuf generated (keep .proto, ignore generated .pb.cc/.pb.h)
 *.pb.cc
