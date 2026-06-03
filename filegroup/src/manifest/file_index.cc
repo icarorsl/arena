@@ -132,6 +132,9 @@ void FileIndex::apply_version_deleted(const VersionDeletedEntry& e) {
     auto vit = fit->second.versions.find(e.version_number);
     if (vit == fit->second.versions.end()) return;
     
+    // Don't resurrect a fully-deleted version back to MARKED_DELETED
+    if (vit->second.state == VersionState::DELETED) return;
+    
     vit->second.state = VersionState::MARKED_DELETED;
 }
 
