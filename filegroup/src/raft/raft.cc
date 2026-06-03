@@ -30,6 +30,14 @@ RaftNode::RaftNode(RaftConfig config,
 
     // Restore persistent state from disk
     restore_state();
+
+    // Replay committed entries into the state machine (single-node: all entries are committed)
+    if (!persistent_.log.empty()) {
+        volatile_.commit_index = last_log_index();
+        apply_committed_entries();
+        std::cout << "[raft] Replayed " << persistent_.log.size() << " entries from log\n";
+    }
+
     reset_election_timer();
 
     // Start event loop
@@ -566,9 +574,8 @@ void RaftNode::restore_state() {
         }
     }
 
-    // Restore commit/last_applied to log size (safe — replay will catch up)
+    // Set commit_index to log size; last_applied stays 0 so replay applies all
     volatile_.commit_index = persistent_.log.size();
-    volatile_.last_applied = persistent_.log.size();
 
     std::cout << "[raft] node " << config_.local_node_id
               << " restored " << persistent_.log.size()
