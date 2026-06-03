@@ -84,6 +84,16 @@ struct VersionDeletedEntry {
 };
 
 /**
+ * VERSION_RECLAIMED: Compaction has removed the physical data.
+ * Transitions MARKED_DELETED → DELETED.
+ */
+struct VersionReclaimedEntry {
+    uint64_t file_id;
+    uint64_t logical_file_id;
+    uint32_t version_number;
+};
+
+/**
  * FILE_DELETED: Logical file marked for deletion.
  */
 struct FileDeletedEntry {

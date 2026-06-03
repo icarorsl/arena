@@ -88,6 +88,7 @@ public:
     void apply_chunk_confirmed(const ChunkConfirmedEntry& e);
     void apply_version_complete(const VersionCompleteEntry& e);
     void apply_version_deleted(const VersionDeletedEntry& e);
+    void apply_version_reclaimed(const VersionReclaimedEntry& e);
     void apply_file_deleted(const FileDeletedEntry& e);
     void apply_session_timed_out(const SessionTimedOutEntry& e);
     void apply_chunk_delete_confirmed(const ChunkDeleteConfirmedEntry& e);

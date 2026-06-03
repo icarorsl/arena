@@ -83,6 +83,14 @@ void replay_manifest(const std::string& manifest_path, FileIndex& index) {
                 }
                 break;
 
+            case ManifestEntryType::VERSION_RECLAIMED:
+                if (body.size() >= sizeof(VersionReclaimedEntry)) {
+                    const VersionReclaimedEntry* e = reinterpret_cast<const VersionReclaimedEntry*>(body.data());
+                    index.apply_version_reclaimed(*e);
+                    applied = true;
+                }
+                break;
+
             case ManifestEntryType::FILE_DELETED:
                 if (body.size() >= sizeof(FileDeletedEntry)) {
                     const FileDeletedEntry* e = reinterpret_cast<const FileDeletedEntry*>(body.data());

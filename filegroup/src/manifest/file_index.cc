@@ -135,6 +135,18 @@ void FileIndex::apply_version_deleted(const VersionDeletedEntry& e) {
     vit->second.state = VersionState::MARKED_DELETED;
 }
 
+void FileIndex::apply_version_reclaimed(const VersionReclaimedEntry& e) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    
+    auto fit = files_.find(e.logical_file_id);
+    if (fit == files_.end()) return;
+    
+    auto vit = fit->second.versions.find(e.version_number);
+    if (vit == fit->second.versions.end()) return;
+    
+    vit->second.state = VersionState::DELETED;
+}
+
 void FileIndex::apply_file_deleted(const FileDeletedEntry& e) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     

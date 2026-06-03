@@ -73,6 +73,7 @@ void CompactionService::run_loop() {
 uint32_t CompactionService::run_once() {
     uint32_t segments_compacted = 0;
     uint32_t total_segments = 0, total_chunks = 0, total_dead = 0;
+    std::set<uint64_t> reclaimed_file_ids;  // file_ids whose chunks were removed
 
     // Build set of live physical file IDs (those with >=1 non-deleted version)
     std::set<uint64_t> live_file_ids;
@@ -137,6 +138,7 @@ uint32_t CompactionService::run_once() {
                     } else {
                         dead_count++;
                         total_dead++;
+                        reclaimed_file_ids.insert(ceh.file_id);
                     }
 
                     cursor = next_cursor;
@@ -190,6 +192,24 @@ uint32_t CompactionService::run_once() {
                   << total_chunks << " chunks, " << total_dead
                   << " dead — nothing to compact" << std::endl;
     }
+
+    // Transition MARKED_DELETED → DELETED for reclaimed file_ids
+    if (!reclaimed_file_ids.empty()) {
+        auto all_files = registry_->all_files();
+        for (const auto& f : all_files) {
+            for (const auto& [vn, ver] : f.versions) {
+                if (ver.state == VersionState::MARKED_DELETED &&
+                    reclaimed_file_ids.count(ver.file_id)) {
+                    VersionReclaimedEntry e;
+                    e.file_id = ver.file_id;
+                    e.logical_file_id = f.logical_file_id;
+                    e.version_number = vn;
+                    registry_->append_entry((uint32_t)ManifestEntryType::VERSION_RECLAIMED, &e, sizeof(e));
+                }
+            }
+        }
+    }
+
     return segments_compacted;
 }
 

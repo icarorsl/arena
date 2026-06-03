@@ -56,6 +56,12 @@ RegistryServer::RegistryServer(uint32_t node_id,
                 }
                 break;
             }
+            case ManifestEntryType::VERSION_RECLAIMED: {
+                if (body_length >= sizeof(VersionReclaimedEntry)) {
+                    file_index_.apply_version_reclaimed(*static_cast<const VersionReclaimedEntry*>(body));
+                }
+                break;
+            }
             case ManifestEntryType::FILE_DELETED: {
                 if (body_length >= sizeof(FileDeletedEntry)) {
                     file_index_.apply_file_deleted(*static_cast<const FileDeletedEntry*>(body));

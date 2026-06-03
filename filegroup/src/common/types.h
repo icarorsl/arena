@@ -78,6 +78,7 @@ enum class ManifestEntryType : uint16_t {
     MAX_VERSIONS_ENFORCED = 0x000A,
     CHUNK_LOCATION_UPDATED = 0x000B,
     TABLE_CREATED = 0x0010,
+    VERSION_RECLAIMED = 0x0011,
     // Phase 3 projection entries (declared for forward compatibility)
     PROJECTION_CREATE = 0x000C,    // Phase 3 — not implemented
     PROJECTION_UPDATE = 0x000D,    // Phase 3 — not implemented
