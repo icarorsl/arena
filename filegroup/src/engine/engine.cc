@@ -8,6 +8,20 @@ Engine::Engine(const ClusterConfig& c, RegistryClient* r, const std::vector<Stor
 UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
  auto* grp=find_group(gid); if(!grp)throw std::runtime_error("group not found");
  auto* tbl=find_table(tid);
+ // Fall back to dynamic tables from registry if not in static config
+ FileTableConfig dyn_tbl;
+ if(!tbl){
+  auto dts=registry_->get_tables();
+  for(auto&dt:dts){
+   if(dt.table_id==tid&&dt.group_id==gid){
+    dyn_tbl.table_id=dt.table_id;dyn_tbl.group_id=dt.group_id;dyn_tbl.name=dt.name;
+    dyn_tbl.chunk_size=dt.chunk_size;dyn_tbl.replication_factor=dt.replication_factor;
+    dyn_tbl.file_expires_in_days=dt.file_expires_in_days;dyn_tbl.max_versions=dt.max_versions;
+    dyn_tbl.encryption=dt.encryption;dyn_tbl.expiry_granularity=dt.expiry_granularity;
+    tbl=&dyn_tbl;break;
+   }
+  }
+ }
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
