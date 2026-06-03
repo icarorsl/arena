@@ -82,7 +82,8 @@ uint32_t CompactionService::run_once() {
     for (const auto& f : all_files) {
         for (const auto& [vn, ver] : f.versions) {
             if (ver.state == VersionState::COMPLETE ||
-                ver.state == VersionState::SUPERSEDED) {
+                ver.state == VersionState::SUPERSEDED ||
+                ver.state == VersionState::MARKED_DELETED) {
                 live_file_ids.insert(ver.file_id);
             }
         }
