@@ -14,6 +14,8 @@ public class FileModel : PageModel
     public List<VersionInfo> Versions { get; set; } = new();
     public string? Error { get; set; }
     public bool Deleted { get; set; }
+    public bool CanAddVersion { get; set; }
+    public uint MaxVersions { get; set; }
 
     public FileModel(Engine.EngineClient client) => _client = client;
 
@@ -42,6 +44,17 @@ public class FileModel : PageModel
             });
 
             Versions = vers.Versions.OrderByDescending(v => v.VersionNumber).ToList();
+
+            // Fetch table config to determine max_versions
+            try
+            {
+                var tables = await _client.GetTablesAsync(new GetTablesRequest());
+                var table = tables.Tables.FirstOrDefault(t => t.TableId == FileInfo.TableId);
+                MaxVersions = table?.MaxVersions ?? 0;
+                uint completeCount = (uint)Versions.Count(v => v.State == VersionState.Complete);
+                CanAddVersion = MaxVersions == 0 || completeCount < MaxVersions;
+            }
+            catch { CanAddVersion = true; }
         }
         catch (Exception ex)
         {

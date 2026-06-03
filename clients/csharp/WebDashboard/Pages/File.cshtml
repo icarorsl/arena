@@ -25,7 +25,14 @@ else if (Model.FileInfo != null)
         <h2>File #@Model.FileInfo.LogicalFileId</h2>
         <div class="actions">
             <a href="/Play/@RouteData.Values["id"]" class="btn" style="border-color:var(--accent);">▶ Play</a>
-            <a href="/Upload?fileId=@RouteData.Values["id"]" class="btn" style="border-color:var(--ok);">+ New Version</a>
+            @if (Model.CanAddVersion)
+            {
+                <a href="/Upload?fileId=@RouteData.Values["id"]" class="btn" style="border-color:var(--ok);">+ New Version</a>
+            }
+            else
+            {
+                <span class="btn" style="border-color:var(--border);color:var(--muted);cursor:not-allowed;" title="max_versions=@Model.MaxVersions reached">+ New Version</span>
+            }
             <form method="post" asp-page-handler="Delete" asp-route-id="@RouteData.Values["id"]" onsubmit="return confirm('Delete this file and all versions?')">
                 @Html.AntiForgeryToken()
                 <button type="submit" class="btn" style="color:var(--err);border-color:var(--err);cursor:pointer;">Delete File</button>
