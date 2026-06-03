@@ -1,0 +1,64 @@
+@page
+@model WebDashboard.Pages.TablesModel
+@{
+    ViewData["Title"] = "Tables";
+}
+
+<h2>Tables</h2>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="status" style="border-color:var(--err);margin-bottom:1rem;">
+        <p style="color:var(--err);">@Model.Error</p>
+    </div>
+}
+
+@if (Model.Tables.Count == 0)
+{
+    <div class="empty">
+        <p>No tables found.</p>
+        <p style="font-size:.85rem;margin-top:.5rem;">Tables are configured in the engine's config. Upload a file to see tables here.</p>
+    </div>
+}
+else
+{
+    <table>
+        <thead>
+            <tr>
+                <th>Table ID</th>
+                <th>Group ID</th>
+                <th>Files</th>
+                <th>Active</th>
+                <th>Deleted</th>
+                <th>Total Size</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var t in Model.Tables)
+        {
+            <tr>
+                <td class="mono">
+                    <a href="/Files?group=@t.GroupId&table=@t.TableId">@t.TableId</a>
+                </td>
+                <td>@t.GroupId</td>
+                <td class="mono">@t.FileCount</td>
+                <td class="mono"><span class="badge ok">@t.ActiveCount</span></td>
+                <td class="mono"><span class="badge err">@t.DeletedCount</span></td>
+                <td class="mono">@FormatSize(t.TotalSize)</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@functions {
+    static string FormatSize(ulong bytes)
+    {
+        if (bytes == 0) return "—";
+        string[] suf = { "B", "KB", "MB", "GB" };
+        int i = 0;
+        double d = bytes;
+        while (d >= 1024 && i < suf.Length - 1) { d /= 1024; i++; }
+        return d.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " " + suf[i];
+    }
+}
