@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -319,7 +320,8 @@ int main(int argc, char* argv[]) {
     metrics.start();
 
     // ── Start engine ─────────────────────────────────────────────────────
-    filegroup::EngineServer engine_server(config, &metrics, "/tmp/filegroup");
+    const char* data_dir = std::getenv("FILEGROUP_DATA_DIR");
+    filegroup::EngineServer engine_server(config, &metrics, data_dir ? data_dir : "/var/lib/filegroup");
 
     // ── Start gRPC server ────────────────────────────────────────────────
     std::string server_address("0.0.0.0:8443");
