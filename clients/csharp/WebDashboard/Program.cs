@@ -14,6 +14,15 @@ builder.Services.AddSingleton(sp =>
 
 var app = builder.Build();
 
+// Disable browser caching during development
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    context.Response.Headers["Pragma"] = "no-cache";
+    context.Response.Headers["Expires"] = "0";
+    await next();
+});
+
 if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Error");
 
