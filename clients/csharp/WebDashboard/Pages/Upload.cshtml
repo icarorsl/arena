@@ -30,6 +30,7 @@
 }
 
 <form method="post" enctype="multipart/form-data">
+    @Html.AntiForgeryToken()
     <div style="display:flex;flex-direction:column;gap:1rem;max-width:480px;">
         <div>
             <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">File</label>
