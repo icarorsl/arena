@@ -4,7 +4,7 @@
     ViewData["Title"] = $"File {RouteData.Values["id"]}";
 }
 
-<a href="/Files" class="back-link">← Back to files</a>
+<a href="/Files?table=@Model.FileInfo.TableId&group=@Model.FileInfo.GroupId" class="back-link">← Back to files</a>
 
 @if (!string.IsNullOrEmpty(Model.Error))
 {
