@@ -27,10 +27,20 @@ public class UploadModel : PageModel
     public UploadModel(Engine.EngineClient client) => _client = client;
 
     public ulong ExistingFileId { get; set; }
+    public uint PreselectedTable { get; set; }
+    public List<(uint TableId, uint GroupId, string Name)> Tables { get; set; } = new();
 
-    public void OnGet([FromQuery] ulong fileId = 0)
+    public async Task OnGetAsync([FromQuery] ulong fileId = 0, [FromQuery] uint table = 0)
     {
         ExistingFileId = fileId;
+        PreselectedTable = table;
+        try
+        {
+            var resp = await _client.GetTablesAsync(new GetTablesRequest());
+            Tables = resp.Tables.Select(t => (t.TableId, t.GroupId, t.Name)).OrderBy(t => t.TableId).ToList();
+            if (PreselectedTable == 0 && Tables.Count > 0) PreselectedTable = Tables[0].TableId;
+        }
+        catch { /* use defaults */ }
     }
 
     public async Task<IActionResult> OnPostAsync()

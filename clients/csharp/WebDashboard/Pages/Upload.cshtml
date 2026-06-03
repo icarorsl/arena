@@ -37,17 +37,15 @@
             <input type="file" name="UploadedFile" required
                    style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem;width:100%;" />
         </div>
-        <div style="display:flex;gap:1rem;">
-            <div style="flex:1;">
-                <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">Group</label>
-                <input type="number" name="GroupId" value="1" min="1"
-                       style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;width:100%;" />
-            </div>
-            <div style="flex:1;">
-                <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">Table</label>
-                <input type="number" name="TableId" value="1" min="1"
-                       style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;width:100%;" />
-            </div>
+        <div>
+            <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">Table</label>
+            <select name="TableId" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;width:100%;">
+                @foreach (var t in Model.Tables)
+                {
+                    <!option value="@t.TableId" selected=@(t.TableId == Model.PreselectedTable)>@t.Name (ID @t.TableId, Group @t.GroupId)</!option>
+                }
+            </select>
+            <input type="hidden" name="GroupId" value="@(Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId)" />
         </div>
         <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">
             Upload
