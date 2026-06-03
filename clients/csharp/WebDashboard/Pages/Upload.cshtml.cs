@@ -102,6 +102,11 @@ public class UploadModel : PageModel
                 return Page();
             }
 
+            if (ExistingFileId > 0)
+            {
+                return RedirectToPage("/File", new { id = ExistingFileId });
+            }
+
             Done = true;
             UploadedFileId = complete.LogicalFileId;
             UploadedVersion = complete.VersionNumber;
