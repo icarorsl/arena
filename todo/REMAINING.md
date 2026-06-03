@@ -11,15 +11,7 @@
 | 18 | Engine + node recovery | Manifest replay on startup, segment inventory scan, missing chunk detection |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
 
-## ❌ Not started (gRPC-inter-node)
-
-| Component | What's needed |
-|---|---|
-| gRPC between Engine → Storage | `storage.proto` compiled, gRPC storage server wrapping `StorageServer` |
-| gRPC between Registry nodes | `registry.proto` compiled, gRPC Raft transport replacing `InProcessRaftTransport` |
-| mTLS everywhere | Replace `InsecureServerCredentials` with real TLS credentials |
-
-## ❌ Not started (Production readiness)
+## ❌ Production hardening (not in Phase 1 spec)
 
 | Item | Notes |
 |---|---|
