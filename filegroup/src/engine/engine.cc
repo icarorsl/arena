@@ -55,7 +55,7 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs){
  UploadSession* s=nullptr;{std::lock_guard<std::mutex>lk(sessions_mutex_);auto it=sessions_.find(sid);if(it==sessions_.end())return false;s=&it->second;}
  if(s->state==VersionState::COMPLETE)return true; if(s->state!=VersionState::UPLOADING)return false;
  if(s->expected_chunks>0&&s->confirmed_chunks.size()<s->expected_chunks)return false;
- VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.total_size=s->total_bytes;e.chunk_count=(uint32_t)s->confirmed_chunks.size();
+ VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.total_size=s->total_bytes;e.chunk_count=(uint32_t)s->confirmed_chunks.size();e.created_at_us=s->created_at_us;
  registry_->append_entry((uint32_t)ManifestEntryType::VERSION_COMPLETE,&e,sizeof(e));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
  return true;

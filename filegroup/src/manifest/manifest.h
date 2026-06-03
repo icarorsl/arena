@@ -70,6 +70,7 @@ struct VersionCompleteEntry {
     uint32_t content_checksum;     // CRC32C of full file
     uint64_t total_size;
     uint32_t chunk_count;
+    uint64_t created_at_us;
 };
 
 /**

@@ -167,6 +167,7 @@ public:
             vi->set_chunk_count(v.chunk_count);
             vi->set_expires_at_us(v.expires_at_us);
             vi->set_encryption(static_cast<filegroup::engine::EncryptionAlgo>(v.encryption));
+            vi->set_created_at_us(v.created_at_us);
         }
         return Status::OK;
     }

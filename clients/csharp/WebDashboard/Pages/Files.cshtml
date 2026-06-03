@@ -57,6 +57,7 @@ else
                 <td class="mono">@f.LatestVersion</td>
                 <td><span class="badge @(f.State == Filegroup.Engine.FileState.FileActive ? "ok" : "err")">@f.State</span></td>
                 <td class="mono">@FormatSize(f.TotalSize)</td>
+                <td class="mono" style="font-size:.8rem;">@FormatTimestamp(f.CreatedAtUs)</td>
             </tr>
         }
         </tbody>
@@ -72,5 +73,16 @@ else
         double d = bytes;
         while (d >= 1024 && i < suf.Length - 1) { d /= 1024; i++; }
         return d.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " " + suf[i];
+    }
+
+    static string FormatTimestamp(ulong us)
+    {
+        if (us == 0) return "—";
+        try
+        {
+            var dt = DateTimeOffset.FromUnixTimeSeconds((long)(us / 1_000_000));
+            return dt.ToString("yyyy-MM-dd HH:mm");
+        }
+        catch { return us.ToString(); }
     }
 }

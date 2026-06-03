@@ -78,6 +78,7 @@ else if (Model.FileInfo != null)
                     <th>Chunks</th>
                     <th>Encryption</th>
                     <th>Expires</th>
+                    <th>Created</th>
                 </tr>
             </thead>
             <tbody>
@@ -91,6 +92,7 @@ else if (Model.FileInfo != null)
                     <td class="mono">@v.ChunkCount</td>
                     <td>@v.Encryption</td>
                     <td class="mono">@(v.ExpiresAtUs == 0 ? "never" : FormatTimestamp(v.ExpiresAtUs))</td>
+                    <td class="mono" style="font-size:.8rem;">@FormatTimestamp(v.CreatedAtUs)</td>
                 </tr>
             }
             </tbody>

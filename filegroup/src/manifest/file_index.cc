@@ -10,6 +10,14 @@ FileIndex::FileIndex() = default;
 void FileIndex::apply_session_open(const SessionOpenEntry& e) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     
+    // Update high-water ID counters (for recovery replay)
+    if (e.logical_file_id >= next_logical_file_id_.load())
+        next_logical_file_id_.store(e.logical_file_id + 1);
+    if (e.file_id >= next_file_id_.load())
+        next_file_id_.store(e.file_id + 1);
+    if (e.session_id >= next_session_id_.load())
+        next_session_id_.store(e.session_id + 1);
+    
     // Create or get file entry
     auto it = files_.find(e.logical_file_id);
     if (it == files_.end()) {
@@ -95,6 +103,7 @@ void FileIndex::apply_version_complete(const VersionCompleteEntry& e) {
     vit->second.content_checksum = e.content_checksum;
     vit->second.total_size = e.total_size;
     vit->second.chunk_count = e.chunk_count;
+    vit->second.created_at_us = now_us();
     
     fit->second.latest_complete_version = e.version_number;
 }

@@ -44,6 +44,7 @@ struct VersionEntry {
     EncryptionAlgo encryption;
     uint32_t content_checksum;
     uint64_t upload_session_id;
+    uint64_t created_at_us;
     SegmentType segment_type;
     std::string page_bucket;
     std::vector<ChunkLocation> chunks;

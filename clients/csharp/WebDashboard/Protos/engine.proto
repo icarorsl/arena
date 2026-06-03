@@ -176,6 +176,7 @@ message VersionInfo {
     uint32 chunk_count = 5;
     uint64 expires_at_us = 6;
     EncryptionAlgo encryption = 7;
+    uint64 created_at_us = 8;
 }
 
 message ListVersionsResponse {
