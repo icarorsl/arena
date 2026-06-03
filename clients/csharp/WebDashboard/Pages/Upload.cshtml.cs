@@ -26,7 +26,12 @@ public class UploadModel : PageModel
 
     public UploadModel(Engine.EngineClient client) => _client = client;
 
-    public void OnGet() { }
+    public ulong ExistingFileId { get; set; }
+
+    public void OnGet([FromQuery] ulong fileId = 0)
+    {
+        ExistingFileId = fileId;
+    }
 
     public async Task<IActionResult> OnPostAsync()
     {
@@ -45,8 +50,9 @@ public class UploadModel : PageModel
             {
                 GroupId = GroupId,
                 TableId = TableId,
+                LogicalFileId = ExistingFileId,
                 TotalSize = totalSize,
-                ExpectedChunks = 0  // let engine compute
+                ExpectedChunks = 0
             });
 
             var chunkSize = (int)(session.ResolvedChunkSize > 0 ? session.ResolvedChunkSize : 65536);
