@@ -168,7 +168,6 @@ void Engine::rebuild_chunk_locations(){
   }
   closedir(dp);
  }
- std::cerr<<"[engine] rebuilt chunk locations from disk"<<std::endl;
 }
 const FileGroupConfig* Engine::find_group(uint32_t gid)const{for(auto&g:config_.groups)if(g.group_id==gid)return&g;return nullptr;}
 const FileTableConfig* Engine::find_table(uint32_t tid)const{for(auto&t:config_.tables)if(t.table_id==tid)return&t;return nullptr;}
