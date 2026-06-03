@@ -177,10 +177,12 @@ uint32_t CompactionService::run_once() {
                 }
 
                 // Invalidate cached segment so next write opens the new file
-                // Parse group/table from segment filename: page_1_1_10_0.seg
+                // Parse group/table from segment filename: page_N_G_T_X.seg or seg_N_G_T_X.seg
                 uint32_t seg_group = 0, seg_table = 0;
-                sscanf(name.c_str(), "page_%*u_%u_%u", &seg_group, &seg_table);
-                if (seg_group == 0) sscanf(name.c_str(), "seg_%*u_%u_%u", &seg_group, &seg_table);
+                size_t last_slash = seg_path.rfind('/');
+                std::string fname = (last_slash != std::string::npos) ? seg_path.substr(last_slash + 1) : seg_path;
+                sscanf(fname.c_str(), "page_%*u_%u_%u", &seg_group, &seg_table);
+                if (seg_group == 0) sscanf(fname.c_str(), "seg_%*u_%u_%u", &seg_group, &seg_table);
                 for (auto* sc : storage_nodes_) {
                     if (sc && seg_group > 0 && seg_table > 0)
                         sc->invalidate_segment(seg_group, seg_table);
