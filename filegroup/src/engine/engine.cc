@@ -72,7 +72,7 @@ bool Engine::write_chunk(uint64_t sid,uint32_t ci,const uint8_t* d,uint64_t sz){
  if(!r.success)return false;
  s->total_bytes+=sz;
  for(auto rid:a->replica_node_ids){auto*rep=get_storage_node(rid);if(rep)rep->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);}
- ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;
+ ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;ce.segment_offset=r.offset;strncpy(ce.segment_file,r.segment_file.c_str(),sizeof(ce.segment_file)-1);ce.segment_file[sizeof(ce.segment_file)-1]=0;
  registry_->append_entry((uint32_t)ManifestEntryType::CHUNK_CONFIRMED,&ce,sizeof(ce));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->confirmed_chunks.insert(ci);}
  {std::lock_guard<std::mutex> lk(chunks_mutex_);chunk_locs_[s->file_id][ci]={r.segment_file,r.offset,sz};}
