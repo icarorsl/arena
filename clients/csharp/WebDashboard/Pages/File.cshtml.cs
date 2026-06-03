@@ -65,11 +65,25 @@ public class FileModel : PageModel
         try
         {
             using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id });
-            var data = new List<byte>();
-            while (await call.ResponseStream.MoveNext(CancellationToken.None))
-                data.AddRange(call.ResponseStream.Current.Data);
 
-            return File(data.ToArray(), "application/octet-stream");
+            Response.ContentType = "application/octet-stream";
+            Response.Headers["Accept-Ranges"] = "bytes";
+
+            // Stream bytes directly: gRPC → HTTP, no buffering
+            var total = 0L;
+            while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
+            {
+                var chunk = call.ResponseStream.Current.Data;
+                await Response.Body.WriteAsync(chunk.Memory, HttpContext.RequestAborted);
+                await Response.Body.FlushAsync(HttpContext.RequestAborted);
+                total += chunk.Length;
+            }
+
+            return new EmptyResult();
+        }
+        catch (OperationCanceledException)
+        {
+            return new EmptyResult(); // client disconnected — ok
         }
         catch
         {
