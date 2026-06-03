@@ -46,6 +46,7 @@
                 }
             </select>
             <input type="hidden" name="GroupId" value="@(Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId > 0 ? Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId : 1)" />
+            <input type="hidden" name="ExistingFileId" value="@Model.ExistingFileId" />
         </div>
         <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">
             Upload

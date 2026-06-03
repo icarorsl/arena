@@ -26,6 +26,7 @@ public class UploadModel : PageModel
 
     public UploadModel(Engine.EngineClient client) => _client = client;
 
+    [BindProperty]
     public ulong ExistingFileId { get; set; }
     public uint PreselectedTable { get; set; }
     public List<(uint TableId, uint GroupId, string Name)> Tables { get; set; } = new();
