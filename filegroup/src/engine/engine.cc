@@ -22,6 +22,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
    }
   }
  }
+ if(!tbl) throw std::runtime_error("table "+std::to_string(tid)+" not found in group "+std::to_string(gid));
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto mv=resolve_max_versions(*grp,tbl);
