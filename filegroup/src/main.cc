@@ -296,17 +296,8 @@ int main(int argc, char* argv[]) {
     group.encryption = filegroup::EncryptionAlgo::NONE;
     config.groups.push_back(group);
 
-    filegroup::FileTableConfig table;
-    table.table_id = 1;
-    table.name = "default";
-    table.group_id = 1;
-    table.chunk_size = 0;
-    table.replication_factor = 0;
-    table.expiry_granularity = filegroup::ExpiryGranularity::UNSET;
-    table.encryption = filegroup::EncryptionAlgo::NONE;
-    table.file_expires_in_days = 0;
-    table.max_versions = 0;
-    config.tables.push_back(table);
+    // No default table — users must create tables explicitly via the dashboard.
+    // This avoids ghost files appearing from Raft replay of table-less SESSION_OPEN entries.
 
     filegroup::ApiKeyConfig api_key;
     api_key.key = "test-api-key";
