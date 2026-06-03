@@ -11,7 +11,12 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
- uint64_t sid=registry_->next_session_id(),fid=lid?lid:registry_->next_file_id(),lid2=lid?lid:registry_->next_logical_file_id(); if(!lid)lid=lid2; uint32_t vn=1;
+ uint64_t sid=registry_->next_session_id(),fid=registry_->next_file_id(),lid2=lid?lid:registry_->next_logical_file_id(); if(!lid)lid=lid2;
+ uint32_t vn=1;
+ if(lid){
+  auto* ef=registry_->get_file(lid);
+  if(ef) vn=ef->next_version_number;
+ }
  std::vector<uint16_t> hn; for(uint16_t i=1;i<=storage_nodes_.size();i++)hn.push_back(i);
  uint32_t cc=ec; if(cc==0&&ts>0)cc=(uint32_t)((ts+cs-1)/cs);
  auto as=assign_chunks(fid,std::max(1u,cc),rf,hn);
