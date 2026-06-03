@@ -10,8 +10,10 @@
   <ItemGroup>
     <Compile Remove="Tests\**" />
     <Compile Remove="Demo\**" />
+    <Compile Remove="DemoLocal\**" />
     <None Include="Tests\**" />
     <None Include="Demo\**" />
+    <None Include="DemoLocal\**" />
   </ItemGroup>
 
   <ItemGroup>

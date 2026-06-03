@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8443:8443"
+    volumes:
+      - filegroup_data:/var/lib/filegroup
+    restart: unless-stopped
+
+volumes:
+  filegroup_data:

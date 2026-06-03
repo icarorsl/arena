@@ -3,5 +3,6 @@
     <Project Path="Tests/FileGroupClient.Tests.csproj" />
   </Folder>
   <Project Path="Demo/Demo.csproj" />
+  <Project Path="DemoLocal/DemoLocal.csproj" />
   <Project Path="FileGroupClient.csproj" />
 </Solution>
