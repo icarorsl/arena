@@ -54,9 +54,18 @@ EngineServer::RFR EngineServer::read_file(uint64_t lid,uint32_t vn){RFR r;
  return r;}
 EngineServer::RCR EngineServer::read_chunk(uint64_t lid,uint32_t vn,uint32_t ci){RCR r;r.data=engine_->read_chunk(lid,vn,ci);if(r.data.empty())r.error="not found";return r;}
 EngineServer::SR EngineServer::delete_file(uint64_t lid){
- FileDeletedEntry e;e.logical_file_id=lid;
- auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::FILE_DELETED,&e,sizeof(e));(void)lsn;
- return{ok,ok?"":"delete failed"};
+ auto* f=rc_->get_file(lid);
+ if(!f)return{false,"file not found"};
+ // Collect version numbers before writing (avoid iterator invalidation)
+ std::vector<uint32_t> vns;for(auto&[vn,_]:f->versions)vns.push_back(vn);
+ for(auto vn:vns){
+  auto vit=f->versions.find(vn);
+  if(vit==f->versions.end())continue;
+  VersionDeletedEntry e;e.file_id=vit->second.file_id;e.logical_file_id=lid;e.version_number=vn;
+  auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&e,sizeof(e));(void)lsn;
+  if(!ok)return{false,"delete failed at version "+std::to_string(vn)};
+ }
+ return{true,""};
 }
 EngineServer::SR EngineServer::delete_version(uint64_t lid,uint32_t vn){
  auto* f=rc_->get_file(lid);
