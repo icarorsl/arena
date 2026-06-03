@@ -3,6 +3,7 @@
 #include "common/crc32c.h"
 #include "segment/segment.h"
 #include <algorithm>
+#include <cstring>
 #include <dirent.h>
 #include <iostream>
 namespace filegroup {
