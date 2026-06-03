@@ -100,6 +100,11 @@ public:
     /// Find the current leader server.
     RegistryServer* find_leader();
 
+    /// Generate unique IDs.
+    uint64_t next_logical_file_id();
+    uint64_t next_file_id();
+    uint64_t next_session_id();
+
 private:
     std::vector<RegistryServer*> servers_;
 };

@@ -153,6 +153,21 @@ RegistryServer* RegistryClient::find_leader() {
     return nullptr;
 }
 
+uint64_t RegistryClient::next_logical_file_id() {
+    auto* leader = find_leader();
+    return leader ? leader->file_index().next_logical_file_id() : 1000;
+}
+
+uint64_t RegistryClient::next_file_id() {
+    auto* leader = find_leader();
+    return leader ? leader->file_index().next_file_id() : 1000;
+}
+
+uint64_t RegistryClient::next_session_id() {
+    auto* leader = find_leader();
+    return leader ? leader->file_index().next_session_id() : 1;
+}
+
 std::pair<bool, uint64_t> RegistryClient::append_entry(
     uint32_t entry_type, const void* body, uint16_t body_length)
 {

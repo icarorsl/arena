@@ -11,7 +11,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
- uint64_t sid=1,fid=lid?lid:1000; if(!lid)lid=fid; uint32_t vn=1;
+ uint64_t sid=registry_->next_session_id(),fid=lid?lid:registry_->next_file_id(),lid2=lid?lid:registry_->next_logical_file_id(); if(!lid)lid=lid2; uint32_t vn=1;
  std::vector<uint16_t> hn; for(uint16_t i=1;i<=storage_nodes_.size();i++)hn.push_back(i);
  uint32_t cc=ec; if(cc==0&&ts>0)cc=(uint32_t)((ts+cs-1)/cs);
  auto as=assign_chunks(fid,std::max(1u,cc),rf,hn);
@@ -37,6 +37,7 @@ bool Engine::write_chunk(uint64_t sid,uint32_t ci,const uint8_t* d,uint64_t sz){
  auto* p=get_storage_node(a->primary_node_id);if(!p)return false;
  auto r=p->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);
  if(!r.success)return false;
+ s->total_bytes+=sz;
  for(auto rid:a->replica_node_ids){auto*rep=get_storage_node(rid);if(rep)rep->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);}
  ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;
  registry_->append_entry((uint32_t)ManifestEntryType::CHUNK_CONFIRMED,&ce,sizeof(ce));
@@ -49,7 +50,7 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs){
  UploadSession* s=nullptr;{std::lock_guard<std::mutex>lk(sessions_mutex_);auto it=sessions_.find(sid);if(it==sessions_.end())return false;s=&it->second;}
  if(s->state==VersionState::COMPLETE)return true; if(s->state!=VersionState::UPLOADING)return false;
  if(s->expected_chunks>0&&s->confirmed_chunks.size()<s->expected_chunks)return false;
- VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.chunk_count=(uint32_t)s->confirmed_chunks.size();
+ VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.total_size=s->total_bytes;e.chunk_count=(uint32_t)s->confirmed_chunks.size();
  registry_->append_entry((uint32_t)ManifestEntryType::VERSION_COMPLETE,&e,sizeof(e));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
  return true;
