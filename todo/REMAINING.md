@@ -5,6 +5,7 @@
 | Step | Component | What's missing |
 |---|---|---|
 | 14 | Versioning enforcement | Dedicated integration tests for max_versions auto-deletion; per-version `VERSION_DELETED` manifest entries on file delete (currently only writes single `FILE_DELETED`) |
+| | | **Current delete behavior:** Manifest-only. `FILE_DELETED` → in-memory `VersionState::DELETED`. Segment file headers and chunk data on disk are untouched. Deleted state is lost on restart (no recovery). Physical disk reclamation needs Step 17 (compaction). |
 | 15 | Heartbeat | Real thread that pings storage nodes, state machine HEALTHY→SUSPECT→DEAD |
 | 16 | Expiry scanner + cleanup | Page segment scan, standard segment expiry scan, cleanup worker pool |
 | 17 | Segment compaction | Read non-deleted chunks, rewrite to new segment, update locations |
