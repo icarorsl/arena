@@ -48,8 +48,8 @@ public class FileModel : PageModel
                 var tables = await _client.GetTablesAsync(new GetTablesRequest());
                 var table = tables.Tables.FirstOrDefault(t => t.TableId == FileInfo.TableId);
                 MaxVersions = table?.MaxVersions ?? 0;
-                uint liveCount = (uint)Versions.Count(v => v.State == Eng.VersionState.VersionComplete || v.State == Eng.VersionState.VersionMarkedDeleted);
-                CanAddVersion = MaxVersions == 0 || liveCount < MaxVersions;
+                uint completeCount = (uint)Versions.Count(v => v.State == Eng.VersionState.VersionComplete);
+                CanAddVersion = MaxVersions == 0 || completeCount < MaxVersions;
             }
             catch { CanAddVersion = true; }
         }

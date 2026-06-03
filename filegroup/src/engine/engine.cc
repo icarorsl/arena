@@ -33,9 +33,9 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  if(lid && mv>0){
   auto* ef=registry_->get_file(lid);
   if(ef){
-   uint32_t live_count=0;
-   for(auto&[vn,ver]:ef->versions) if(ver.state==VersionState::COMPLETE||ver.state==VersionState::MARKED_DELETED) live_count++;
-   if(live_count>=mv) throw std::runtime_error("max_versions="+std::to_string(mv)+" reached ("+std::to_string(live_count)+" live versions); delete a version first");
+   uint32_t complete_count=0;
+   for(auto&[vn,ver]:ef->versions) if(ver.state==VersionState::COMPLETE) complete_count++;
+   if(complete_count>=mv) throw std::runtime_error("max_versions="+std::to_string(mv)+" reached ("+std::to_string(complete_count)+" live versions); delete a version first");
   }
  }
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
