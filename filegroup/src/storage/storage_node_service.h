@@ -82,6 +82,9 @@ public:
     /// Get the data directory path.
     const std::string& data_dir() const { return data_dir_; }
 
+    /// Drop cached segment so next access re-opens the file (call after compaction).
+    void invalidate_segment(uint32_t group_id, uint32_t table_id);
+
     // ---- Node info ----
     uint16_t node_id() const { return node_id_; }
 
@@ -148,6 +151,7 @@ public:
 
     bool delete_chunk(uint64_t file_id, uint32_t chunk_index);
     bool delete_page(const std::string& page_path);
+    void invalidate_segment(uint32_t group_id, uint32_t table_id);
     bool ping();
     uint16_t node_id() const;
     std::vector<std::string> list_segments() const;

@@ -107,6 +107,12 @@ bool StorageServer::delete_page(const std::string& page_path) {
     return PageSegment::unlink_page(page_path);
 }
 
+void StorageServer::invalidate_segment(uint32_t group_id, uint32_t table_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    SegmentKey key{group_id, table_id, 0};
+    segments_.erase(key);
+}
+
 bool StorageServer::ping() const {
     return true;
 }
@@ -200,6 +206,10 @@ bool StorageClient::delete_chunk(uint64_t file_id, uint32_t chunk_index) {
 
 bool StorageClient::delete_page(const std::string& page_path) {
     return server_->delete_page(page_path);
+}
+
+void StorageClient::invalidate_segment(uint32_t group_id, uint32_t table_id) {
+    server_->invalidate_segment(group_id, table_id);
 }
 
 bool StorageClient::ping() { return server_->ping(); }

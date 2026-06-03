@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <set>
+#include <cstdio>
 #include <chrono>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -173,6 +174,16 @@ uint32_t CompactionService::run_once() {
                 for (auto& lc : live_chunks) {
                     engine_.update_chunk_location(lc.file_id, lc.chunk_index,
                                                   seg_path, lc.new_offset, lc.chunk_size);
+                }
+
+                // Invalidate cached segment so next write opens the new file
+                // Parse group/table from segment filename: page_1_1_10_0.seg
+                uint32_t seg_group = 0, seg_table = 0;
+                sscanf(name.c_str(), "page_%*u_%u_%u", &seg_group, &seg_table);
+                if (seg_group == 0) sscanf(name.c_str(), "seg_%*u_%u_%u", &seg_group, &seg_table);
+                for (auto* sc : storage_nodes_) {
+                    if (sc && seg_group > 0 && seg_table > 0)
+                        sc->invalidate_segment(seg_group, seg_table);
                 }
 
                 segments_compacted++;
