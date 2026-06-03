@@ -16,8 +16,10 @@ public class FileModel : PageModel
 
     public FileModel(Engine.EngineClient client) => _client = client;
 
-    public async Task OnGetAsync(long id)
+    public async Task OnGetAsync(long id, [FromQuery] bool deleted = false)
     {
+        Deleted = deleted;
+
         try
         {
             var info = await _client.GetFileInfoAsync(new GetFileInfoRequest
@@ -51,13 +53,13 @@ public class FileModel : PageModel
         try
         {
             await _client.DeleteFileAsync(new DeleteFileRequest { LogicalFileId = (ulong)id });
-            Deleted = true;
+            return RedirectToPage(new { id, deleted = true });
         }
         catch (Exception ex)
         {
             Error = $"Delete failed: {ex.Message}";
+            return Page();
         }
-        return Page();
     }
 
     public async Task<IActionResult> OnGetDownloadAsync(long id)
