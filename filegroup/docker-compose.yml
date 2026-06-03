@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8443:8443"
+      - "9090:9090"
     volumes:
       - filegroup_data:/var/lib/filegroup
     restart: unless-stopped

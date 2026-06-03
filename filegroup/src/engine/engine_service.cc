@@ -1,8 +1,9 @@
 #include "engine/engine_service.h"
 #include <algorithm>
 #include <sys/stat.h>
+#include "common/clock.h"
 namespace filegroup {
-EngineServer::EngineServer(const ClusterConfig& c,const std::string& dr):config_(c){
+EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::string& dr):config_(c),metrics_(m){
  mkdir(dr.c_str(), 0755); // ensure parent dir exists
  for(size_t i=0;i<c.storage_nodes.size();i++){auto& nc=c.storage_nodes[i];
   auto s=std::make_unique<StorageServer>(nc.node_id,dr+"/node_"+std::to_string(nc.node_id));
@@ -17,16 +18,21 @@ EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t li
  R r;try{auto s=engine_->open_session(gid,tid,lid,ts,ec,fed);
   r.success=true;r.session_id=s.session_id;r.file_id=s.file_id;r.logical_file_id=s.logical_file_id;
   r.version_number=s.version_number;r.resolved_chunk_size=s.resolved_chunk_size;r.encryption=s.resolved_encryption;
+  if(metrics_) metrics_->inc_counter("file_upload_sessions_total");
  }catch(const std::exception& e){r.error=e.what();}return r;
 }
 EngineServer::WR EngineServer::write_chunk(uint64_t sid,uint32_t ci,const std::vector<uint8_t>& d){
  WR r;auto* s=engine_->get_session(sid);
  if(s&&s->confirmed_chunks.count(ci)){r.success=true;r.already_confirmed=true;return r;}
- bool ok=engine_->write_chunk(sid,ci,d.data(),d.size());r.success=ok;if(!ok)r.error="write failed";return r;
+ auto t0=now_us();
+ bool ok=engine_->write_chunk(sid,ci,d.data(),d.size());r.success=ok;if(!ok)r.error="write failed";
+ if(metrics_){if(ok)metrics_->inc_chunks_confirmed(); metrics_->observe_chunk_write_latency_ms((now_us()-t0)/1000.0);}
+ return r;
 }
 EngineServer::CR EngineServer::complete_session(uint64_t sid,uint32_t cs){
  CR r;bool ok=engine_->complete_session(sid,cs);r.success=ok;
- if(ok){auto* s=engine_->get_session(sid);if(s){r.logical_file_id=s->logical_file_id;r.file_id=s->file_id;r.version_number=s->version_number;}}
+ if(ok){auto* s=engine_->get_session(sid);if(s){r.logical_file_id=s->logical_file_id;r.file_id=s->file_id;r.version_number=s->version_number;}
+  if(metrics_) metrics_->inc_counter("file_upload_completions_total");}
  else r.error="complete failed";return r;
 }
 EngineServer::RR EngineServer::resume_session(uint64_t sid){
@@ -36,7 +42,11 @@ EngineServer::RR EngineServer::resume_session(uint64_t sid){
  r.resolved_chunk_size=s->resolved_chunk_size;r.encryption=s->resolved_encryption;
  r.confirmed_chunks=engine_->resume_session(sid);return r;
 }
-EngineServer::RFR EngineServer::read_file(uint64_t lid,uint32_t vn){RFR r;r.data=engine_->read_file(lid,vn);if(r.data.empty())r.error="not found";return r;}
+EngineServer::RFR EngineServer::read_file(uint64_t lid,uint32_t vn){RFR r;
+ auto t0=now_us();r.data=engine_->read_file(lid,vn);
+ if(r.data.empty())r.error="not found";
+ else if(metrics_){metrics_->inc_counter("file_read_total");metrics_->observe_chunk_read_latency_ms((now_us()-t0)/1000.0);}
+ return r;}
 EngineServer::RCR EngineServer::read_chunk(uint64_t lid,uint32_t vn,uint32_t ci){RCR r;r.data=engine_->read_chunk(lid,vn,ci);if(r.data.empty())r.error="not found";return r;}
 EngineServer::SR EngineServer::delete_file(uint64_t lid){
  FileDeletedEntry e;e.logical_file_id=lid;

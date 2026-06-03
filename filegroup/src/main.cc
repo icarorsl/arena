@@ -8,6 +8,7 @@
 #include "engine.grpc.pb.h"
 #include "config/config.h"
 #include "engine/engine_service.h"
+#include "metrics/metrics.h"
 
 using grpc::Server;
 using grpc::ServerBuilder;
@@ -273,8 +274,12 @@ int main(int argc, char* argv[]) {
     api_key.permissions = {"read", "write", "admin"};
     config.api_keys.push_back(api_key);
 
+    // ── Start metrics HTTP server ──────────────────────────────────────
+    filegroup::MetricsServer metrics(9090);
+    metrics.start();
+
     // ── Start engine ─────────────────────────────────────────────────────
-    filegroup::EngineServer engine_server(config, "/tmp/filegroup");
+    filegroup::EngineServer engine_server(config, &metrics, "/tmp/filegroup");
 
     // ── Start gRPC server ────────────────────────────────────────────────
     std::string server_address("0.0.0.0:8443");

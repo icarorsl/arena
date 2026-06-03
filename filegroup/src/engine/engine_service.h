@@ -6,12 +6,13 @@
 #include "config/config.h"
 #include "engine/engine.h"
 #include "engine/session.h"
+#include "metrics/metrics.h"
 #include "registry/registry_service.h"
 #include "storage/storage_node_service.h"
 namespace filegroup {
 class EngineServer {
 public:
-    EngineServer(const ClusterConfig& config, const std::string& data_root="/tmp/filegroup");
+    EngineServer(const ClusterConfig& config, MetricsServer* metrics=nullptr, const std::string& data_root="/tmp/filegroup");
     struct R { bool success=false; uint64_t session_id=0,file_id=0,logical_file_id=0,version_number=0,resolved_chunk_size=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; std::string error; };
     R open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts=0,uint32_t ec=0,uint32_t fed=0);
     struct WR { bool success=false,already_confirmed=false; std::string error; };
@@ -34,7 +35,8 @@ public:
     bool ping() const;
     Engine& engine(){return *engine_;}
 private:
-    ClusterConfig config_; std::unique_ptr<RegistryServer> rs_;
+    ClusterConfig config_; MetricsServer* metrics_=nullptr;
+    std::unique_ptr<RegistryServer> rs_;
     std::vector<std::unique_ptr<StorageServer>> ss_; std::vector<std::unique_ptr<StorageClient>> sc_;
     std::unique_ptr<RegistryClient> rc_; std::unique_ptr<Engine> engine_;
 };
