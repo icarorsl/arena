@@ -39,8 +39,9 @@ EngineServer::WR EngineServer::write_chunk(uint64_t sid,uint32_t ci,const std::v
  return r;
 }
 EngineServer::CR EngineServer::complete_session(uint64_t sid,uint32_t cs){
- CR r;bool ok=engine_->complete_session(sid,cs);r.success=ok;
+ CR r;std::string note;bool ok=engine_->complete_session(sid,cs,&note);r.success=ok;
  if(ok){auto* s=engine_->get_session(sid);if(s){r.logical_file_id=s->logical_file_id;r.file_id=s->file_id;r.version_number=s->version_number;}
+  if(!note.empty())r.error=note;
   if(metrics_) metrics_->inc_counter("file_upload_completions_total");}
  else r.error="complete failed";return r;
 }

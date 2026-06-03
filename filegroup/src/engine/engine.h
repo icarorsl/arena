@@ -22,7 +22,7 @@ public:
     Engine(const ClusterConfig& config, RegistryClient* registry, const std::vector<StorageClient*>& storage_nodes);
     UploadSession open_session(uint32_t group_id, uint32_t table_id, uint64_t logical_file_id, uint64_t total_size=0, uint32_t expected_chunks=0, uint32_t file_expires_in_days=0);
     bool write_chunk(uint64_t session_id, uint32_t chunk_index, const uint8_t* data, uint64_t size);
-    bool complete_session(uint64_t session_id, uint32_t content_checksum=0);
+    bool complete_session(uint64_t session_id, uint32_t content_checksum=0, std::string* note=nullptr);
     std::vector<uint32_t> resume_session(uint64_t session_id);
     std::vector<uint8_t> read_file(uint64_t logical_file_id, uint32_t version=0);
     std::vector<uint8_t> read_chunk(uint64_t logical_file_id, uint32_t version, uint32_t chunk_index);

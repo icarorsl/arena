@@ -67,7 +67,7 @@ bool Engine::write_chunk(uint64_t sid,uint32_t ci,const uint8_t* d,uint64_t sz){
  if(s->expected_chunks>0&&s->confirmed_chunks.size()>=s->expected_chunks)complete_session(sid,0);
  return true;
 }
-bool Engine::complete_session(uint64_t sid,uint32_t cs){
+bool Engine::complete_session(uint64_t sid,uint32_t cs,std::string* note){
  UploadSession* s=nullptr;{std::lock_guard<std::mutex>lk(sessions_mutex_);auto it=sessions_.find(sid);if(it==sessions_.end())return false;s=&it->second;}
  if(s->state==VersionState::COMPLETE)return true; if(s->state!=VersionState::UPLOADING)return false;
  if(s->expected_chunks>0&&s->confirmed_chunks.size()<s->expected_chunks)return false;
@@ -88,6 +88,7 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs){
     MaxVersionsEnforcedEntry mv;mv.logical_file_id=s->logical_file_id;mv.deleted_version_number=oldest_vn;mv.deleted_file_id=f->versions.at(oldest_vn).file_id;
     registry_->append_entry((uint32_t)ManifestEntryType::MAX_VERSIONS_ENFORCED,&mv,sizeof(mv));
     std::cout << "[engine] max_versions: deleted v" << oldest_vn << " of file " << s->logical_file_id << "\n";
+    if(note) *note = "Auto-deleted v" + std::to_string(oldest_vn) + " (max_versions=" + std::to_string(s->resolved_max_versions) + ")";
     complete_versions.erase(complete_versions.begin());
    }
   }

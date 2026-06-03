@@ -22,6 +22,10 @@
         <p style="color:var(--muted);margin-bottom:1rem;">
             File <strong>#@Model.UploadedFileId</strong>, version <strong>@Model.UploadedVersion</strong>, @FormatSize((ulong)Model.UploadedSize)
         </p>
+        @if (!string.IsNullOrEmpty(Model.Note))
+        {
+            <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem;">ℹ️ @Model.Note</p>
+        }
         <div class="actions">
             <a href="/File/@Model.UploadedFileId" class="btn" style="border-color:var(--accent);">View file</a>
             <a href="/Files" class="btn" style="border-color:var(--ok);">OK</a>
