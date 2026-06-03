@@ -7,7 +7,6 @@ namespace WebDashboard.Pages;
 public class UploadModel : PageModel
 {
     private readonly Engine.EngineClient _client;
-    private const int ChunkSize = 65536; // 64KB default
 
     [BindProperty]
     public IFormFile? UploadedFile { get; set; }
@@ -38,26 +37,27 @@ public class UploadModel : PageModel
 
         try
         {
-            // 1. Open session
+            // 1. Open session — engine tells us the chunk size
             var totalSize = (ulong)UploadedFile.Length;
-            var expectedChunks = (uint)Math.Ceiling((double)totalSize / ChunkSize);
 
             var session = await _client.OpenSessionAsync(new OpenSessionRequest
             {
                 GroupId = GroupId,
                 TableId = TableId,
                 TotalSize = totalSize,
-                ExpectedChunks = expectedChunks
+                ExpectedChunks = 0  // let engine compute
             });
 
-            // 2. Write chunks
+            var chunkSize = (int)(session.ResolvedChunkSize > 0 ? session.ResolvedChunkSize : 65536);
+
+            // 2. Write chunks using engine's resolved chunk size
             using var stream = UploadedFile.OpenReadStream();
-            var buffer = new byte[ChunkSize];
+            var buffer = new byte[chunkSize];
             uint chunkIdx = 0;
 
             while (true)
             {
-                int bytesRead = await stream.ReadAsync(buffer, 0, ChunkSize);
+                int bytesRead = await stream.ReadAsync(buffer, 0, chunkSize);
                 if (bytesRead == 0) break;
 
                 var data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, bytesRead);
