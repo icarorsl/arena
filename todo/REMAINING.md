@@ -6,7 +6,6 @@
 |---|---|---|
 | 14 | Versioning enforcement | Dedicated integration tests for max_versions auto-deletion; per-version `VERSION_DELETED` manifest entries on file delete (currently only writes single `FILE_DELETED`) |
 | | | **Current delete behavior:** Manifest-only. `FILE_DELETED` → in-memory `VersionState::DELETED`. Segment file headers and chunk data on disk are untouched. Physical disk reclamation needs Step 17 (compaction). |
-| 16 | Expiry scanner + cleanup | Page segment scan, standard segment expiry scan, cleanup worker pool |
 | 17 | Segment compaction | Read non-deleted chunks, rewrite to new segment, update locations |
 | 19 | Background scrubbing | Integrity check per segment, CRC32C/GCM verification, corruption marking |
 

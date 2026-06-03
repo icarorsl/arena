@@ -41,6 +41,7 @@
 ### 🆕 Beyond Spec
 | Component | Status |
 |---|---|
+| Step 16 — Expiry scanner | ✅ Background thread every 60s, marks expired versions VERSION_DELETED via Raft |
 | Step 15 — Heartbeat | ✅ Pings storage nodes every 5s, HEALTHY→SUSPECT→DEAD FSM, writes NODE_HEALTH to Raft |
 | Step 18 — Recovery | ✅ Raft log replay on startup, data survives restarts |
 | Web Dashboard | ✅ Tables, Files, Upload, Delete, Play, Status, dark theme |
