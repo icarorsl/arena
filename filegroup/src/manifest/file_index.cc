@@ -237,16 +237,7 @@ std::vector<LogicalFileEntry> FileIndex::list_files(uint16_t table_id, uint32_t 
 
     for (const auto& p : files_) {
         if (p.second.table_id == table_id && p.second.group_id == group_id) {
-            // Skip files where all versions are deleted
-            bool has_live = false;
-            for (const auto& vp : p.second.versions) {
-                if (vp.second.state != VersionState::DELETED &&
-                    vp.second.state != VersionState::EXPIRED) {
-                    has_live = true;
-                    break;
-                }
-            }
-            if (has_live) result.push_back(p.second);
+            result.push_back(p.second);
         }
     }
 
