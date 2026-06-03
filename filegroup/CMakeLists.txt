@@ -160,6 +160,39 @@ target_link_libraries(filegroup_engine PRIVATE
     filegroup_storage filegroup_segment filegroup_distribution
     filegroup_encryption filegroup_manifest filegroup_file_header)
 
+# Metrics library
+add_library(filegroup_metrics OBJECT
+    src/metrics/metrics.cc
+)
+target_include_directories(filegroup_metrics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# TLS library
+add_library(filegroup_tls OBJECT
+    src/tls/tls_init.cc
+)
+target_include_directories(filegroup_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(filegroup_tls PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+
+# dbctl CLI tool
+add_executable(dbctl
+    src/cli/dbctl.cc
+    $<TARGET_OBJECTS:filegroup_common>
+    $<TARGET_OBJECTS:filegroup_config>
+    $<TARGET_OBJECTS:filegroup_file_header>
+    $<TARGET_OBJECTS:filegroup_manifest>
+    $<TARGET_OBJECTS:filegroup_raft>
+    $<TARGET_OBJECTS:filegroup_segment>
+    $<TARGET_OBJECTS:filegroup_distribution>
+    $<TARGET_OBJECTS:filegroup_encryption>
+    $<TARGET_OBJECTS:filegroup_registry>
+    $<TARGET_OBJECTS:filegroup_storage>
+    $<TARGET_OBJECTS:filegroup_engine>
+    $<TARGET_OBJECTS:filegroup_metrics>
+    $<TARGET_OBJECTS:filegroup_tls>
+)
+target_include_directories(dbctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(dbctl PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+
 # Main executable — gRPC server (wraps EngineServer, exposed on :8443)
 
 # Compile engine.proto → C++

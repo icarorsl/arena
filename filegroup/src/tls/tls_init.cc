@@ -80,22 +80,24 @@ static X509* create_self_signed_cert(EVP_PKEY* pkey, const std::string& common_n
     
     // Set subject and issuer name
     X509_NAME* name = X509_get_subject_name(cert);
-    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASN1, (unsigned char*)"US", -1, -1);
-    X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASN1, (unsigned char*)"FileGroup", -1, -1);
-    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASN1, (unsigned char*)common_name.c_str(), -1, -1);
+    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_UTF8, (unsigned char*)"US", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "O", MBSTRING_UTF8, (unsigned char*)"FileGroup", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8, (unsigned char*)common_name.c_str(), -1, -1, 0);
     X509_set_issuer_name(cert, name);
     
-    // Add extensions for CA cert
-    if (common_name.find("CA") != std::string::npos) {
-        X509V3_CTX ctx;
-        X509V3_CTX_init(&ctx);
-        X509V3_CTX_set_cert(&ctx, cert, cert, nullptr);
-        
-        X509_EXTENSION* ext = X509V3_EXT_conf_nid(nullptr, &ctx, NID_basic_constraints, "critical,CA:TRUE");
-        if (ext) X509_add_extensions(cert, &ext, 1);
-    }
+    // For Phase 1: use basic constraints for CA certs
+    X509V3_CTX ctx;
+    X509V3_set_ctx_nodb(&ctx);
+    X509V3_set_ctx(&ctx, cert, cert, nullptr, nullptr, 0);
+    X509_set_issuer_name(cert, name);
     
-    // Sign the certificate with its own key
+    if (common_name.find("CA") != std::string::npos) {
+        X509_EXTENSION* ext = X509V3_EXT_conf_nid(nullptr, &ctx, NID_basic_constraints, (char*)"critical,CA:TRUE");
+        if (ext) {
+            X509_add_ext(cert, ext, -1);
+            X509_EXTENSION_free(ext);
+        }
+    }
     if (!X509_sign(cert, pkey, EVP_sha256())) {
         X509_free(cert);
         throw std::runtime_error("Failed to sign certificate");
