@@ -58,7 +58,15 @@ EngineServer::SR EngineServer::delete_file(uint64_t lid){
  auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::FILE_DELETED,&e,sizeof(e));(void)lsn;
  return{ok,ok?"":"delete failed"};
 }
-EngineServer::SR EngineServer::delete_version(uint64_t,uint32_t){return{false,"not implemented"};}
+EngineServer::SR EngineServer::delete_version(uint64_t lid,uint32_t vn){
+ auto* f=rc_->get_file(lid);
+ if(!f)return{false,"file not found"};
+ auto vit=f->versions.find(vn);
+ if(vit==f->versions.end())return{false,"version not found"};
+ VersionDeletedEntry e;e.file_id=vit->second.file_id;e.logical_file_id=lid;e.version_number=vn;
+ auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&e,sizeof(e));(void)lsn;
+ return{ok,ok?"":"delete failed"};
+}
 EngineServer::FIR EngineServer::get_file_info(uint64_t lid){
  FIR r;r.logical_file_id=lid;auto* f=rc_->get_file(lid);
  if(!f){r.error="not found";return r;}
