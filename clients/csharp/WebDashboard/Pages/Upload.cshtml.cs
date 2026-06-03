@@ -95,6 +95,12 @@ public class UploadModel : PageModel
                 SessionId = session.SessionId
             });
 
+            if (!complete.Success)
+            {
+                Error = string.IsNullOrEmpty(complete.Error) ? "Complete session failed." : complete.Error;
+                return Page();
+            }
+
             Done = true;
             UploadedFileId = complete.LogicalFileId;
             UploadedVersion = complete.VersionNumber;
