@@ -13,6 +13,7 @@
 | Restore/undelete endpoint | Reverse a delete marker — restore versions to previous state (S3-style) |
 | Serve correct MIME type | Sniff magic bytes to set Content-Type for Play page (mp4, webm, etc.) |
 | UpdateTable gRPC + UI | Modify table config (name, expiry, max_versions, chunk_size). Lazy enforcement — expiry scanner picks up new `file_expires_in_days` on next 60s cycle; `max_versions` only affects future `complete_session` calls. |
+| File.cshtml null ref | Line 7 crashes when FileInfo is null (stale data after compaction) |
 
 ## ❌ Production hardening (not in Phase 1 spec)
 

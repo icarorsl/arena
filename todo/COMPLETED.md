@@ -47,7 +47,14 @@
 | Step 16 — Expiry scanner | ✅ Background thread every 60s, marks expired versions VERSION_DELETED via Raft |
 | Step 18 — Recovery | ✅ Raft log replay on startup, data survives restarts |
 | Data directory fix | ✅ Uses `/var/lib/filegroup` (Docker volume), respects `FILEGROUP_DATA_DIR` env var |
+| Step 17 — Compaction | ✅ Background thread every 60s, scans segments, removes dead chunks, rewrites live chunks, atomic rename |
+| Step 17 — Compaction fixes | ✅ Chunk offset uses header (not data) offset; MARKED_DELETED excluded from liveness → reclaimed; final .seg path after rename |
+| Two-phase delete | ✅ MARKED_DELETED (yellow, playable) → compaction reclaims data → VERSION_RECLAIMED → DELETED (red, gone) |
+| ChunkConfirmedEntry replicas | ✅ Persist segment_file + offset in Raft log for play-after-restart fallback |
+| Play fix — offset | ✅ `rebuild_chunk_locations` stores header offset, not data offset |
+| Play fix — gRPC size | ✅ MaxReceiveMessageSize 256MB for large file downloads |
 | Web Dashboard | ✅ Tables, Files, Upload, Delete, Play, Status, dark theme |
+| Dashboard polish | ✅ Yellow `.badge.warn` for MARKED_DELETED, back-link preserves table/group, Play page shows metadata overlay |
 | Dynamic table creation | ✅ `CreateTable` RPC + Raft-replicated manifest entries |
 | Per-version delete UI | ✅ ✕ button per version on file detail page with confirmation dialog |
 | `created_at_us` timestamps | ✅ On files and versions, formatted in dashboard |
