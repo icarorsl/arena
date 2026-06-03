@@ -1,6 +1,8 @@
 #include "engine/engine_service.h"
 #include <algorithm>
 #include <cstring>
+#include <iostream>
+#include <set>
 #include <sys/stat.h>
 #include "common/clock.h"
 namespace filegroup {
@@ -106,8 +108,12 @@ EngineServer::SR EngineServer::cancel_session(uint64_t sid){auto* s=engine_->get
 bool EngineServer::ping()const{return true;}
 
 std::vector<EngineServer::TIR> EngineServer::get_tables(){
- std::vector<TIR> r;auto ts=rc_->get_tables();
- for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
+ std::vector<TIR> r;std::set<uint32_t> seen;
+ // Dynamic tables (from Raft-replicated TABLE_CREATED entries)
+ auto ts=rc_->get_tables();
+ for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);seen.insert(t.table_id);}
+ // Static config tables (fallback for tables not yet created dynamically)
+ for(auto&t:config_.tables){if(seen.count(t.table_id))continue;TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
  return r;
 }
 

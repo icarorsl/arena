@@ -31,8 +31,6 @@ static std::vector<std::string> find_segment_files(const std::string& dir) {
     return paths;
 }
 
-namespace filegroup {
-
 CompactionService::CompactionService(Engine& engine, RegistryClient* registry,
                                      const std::vector<StorageClient*>& storage_nodes,
                                      uint32_t interval_seconds)
