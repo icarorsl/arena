@@ -302,6 +302,8 @@ int main(int argc, char* argv[]) {
     table.replication_factor = 0;
     table.expiry_granularity = filegroup::ExpiryGranularity::UNSET;
     table.encryption = filegroup::EncryptionAlgo::NONE;
+    table.file_expires_in_days = 0;
+    table.max_versions = 0;
     config.tables.push_back(table);
 
     filegroup::ApiKeyConfig api_key;
