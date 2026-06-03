@@ -21,7 +21,7 @@ EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::st
  heartbeat_->start();
  expiry_=std::make_unique<ExpiryService>(rc_.get(),60);
  expiry_->start();
- compaction_=std::make_unique<CompactionService>(*engine_,rc_.get(),cp,3600);
+ compaction_=std::make_unique<CompactionService>(*engine_,rc_.get(),cp,60);
  compaction_->start();
 }
 EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){

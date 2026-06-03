@@ -85,8 +85,6 @@ uint32_t CompactionService::run_once() {
             }
         }
     }
-    std::cerr << "[compaction] " << all_files.size() << " files, "
-              << live_file_ids.size() << " live file_ids" << std::endl;
 
     for (auto* sc : storage_nodes_) {
         if (!sc || !sc->ping()) continue;
@@ -126,19 +124,10 @@ uint32_t CompactionService::run_once() {
                 uint32_t dead_count = 0;
 
                 for (uint32_t i = 0; i < chunk_count; i++) {
-                    // Read the ChunkEntryHeader at cursor
                     auto ceh = old_seg.read_chunk_header_at(cursor);
                     uint64_t data_offset = cursor + sizeof(ChunkEntryHeader);
                     uint64_t next_cursor = data_offset + ceh.chunk_size;
-
-                    // Check if this chunk's file_id is in the live set
                     bool live = !ceh.is_deleted && live_file_ids.count(ceh.file_id) > 0;
-
-                    if (i == 0) {
-                        std::cerr << "[compaction]   chunk file_id=" << ceh.file_id
-                                  << " live=" << live << " deleted_flag=" << (int)ceh.is_deleted
-                                  << " in_live_set=" << live_file_ids.count(ceh.file_id) << std::endl;
-                    }
 
                     if (live) {
                         live_chunks.push_back({cursor, ceh.file_id,
