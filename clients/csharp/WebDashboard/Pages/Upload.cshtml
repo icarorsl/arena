@@ -1,0 +1,49 @@
+@page
+@model WebDashboard.Pages.UploadModel
+@{
+    ViewData["Title"] = "Upload";
+}
+
+<h2>Upload File</h2>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="status" style="border-color:var(--err);margin-bottom:1rem;">
+        <p style="color:var(--err);">@Model.Error</p>
+    </div>
+}
+
+@if (Model.Done)
+{
+    <div class="status" style="border-color:var(--ok);margin-bottom:1rem;">
+        <p style="color:var(--ok);">
+            Uploaded! File <strong>#@Model.UploadedFileId</strong>, version <strong>@Model.UploadedVersion</strong>.
+            <a href="/File/@Model.UploadedFileId">View file →</a>
+        </p>
+    </div>
+}
+
+<form method="post" enctype="multipart/form-data">
+    <div style="display:flex;flex-direction:column;gap:1rem;max-width:480px;">
+        <div>
+            <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">File</label>
+            <input type="file" name="UploadedFile" required
+                   style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem;width:100%;" />
+        </div>
+        <div style="display:flex;gap:1rem;">
+            <div style="flex:1;">
+                <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">Group</label>
+                <input type="number" name="GroupId" value="1" min="1"
+                       style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;width:100%;" />
+            </div>
+            <div style="flex:1;">
+                <label style="display:block;font-size:.85rem;color:var(--muted);margin-bottom:.3rem;">Table</label>
+                <input type="number" name="TableId" value="1" min="1"
+                       style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem .6rem;width:100%;" />
+            </div>
+        </div>
+        <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">
+            Upload
+        </button>
+    </div>
+</form>
