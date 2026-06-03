@@ -38,4 +38,14 @@
 | `docker-compose.yml` | ✅ |
 | `DemoLocal` connects via http:// | ✅ |
 
-### Test suites: 18/18 C++ + 12/12 C#
+### 🆕 Beyond Spec
+| Component | Status |
+|---|---|
+| Step 15 — Heartbeat | ✅ Pings storage nodes every 5s, HEALTHY→SUSPECT→DEAD FSM, writes NODE_HEALTH to Raft |
+| Step 18 — Recovery | ✅ Raft log replay on startup, data survives restarts |
+| Web Dashboard | ✅ Tables, Files, Upload, Delete, Play, Status, dark theme |
+| Dynamic table creation | ✅ `CreateTable` RPC + Raft-replicated manifest entries |
+| `created_at_us` timestamps | ✅ On files and versions, formatted in dashboard |
+| Anti-forgery fix | ✅ `_ViewImports.cshtml` enables tag helpers, `_ViewStart.cshtml` enables layout |
+| Video streaming | ✅ gRPC→HTTP chunked streaming, no buffering |
+| Metrics wired | ✅ `MetricsServer` started in engine, wired to upload/read operations |
