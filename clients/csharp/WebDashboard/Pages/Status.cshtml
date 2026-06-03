@@ -1,0 +1,57 @@
+@page
+@model WebDashboard.Pages.StatusModel
+@{
+    ViewData["Title"] = "Status";
+}
+
+<h2>Cluster Status</h2>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="status" style="border-color:var(--err);margin-bottom:1rem;">
+        <p style="color:var(--err);">@Model.Error</p>
+    </div>
+}
+
+<div class="meta-grid">
+    <div class="meta-card">
+        <div class="label">Engine</div>
+        <div class="value"><span class="badge @(Model.EngineOk ? "ok" : "err")">@(Model.EngineOk ? "connected" : "unreachable")</span></div>
+    </div>
+    <div class="meta-card">
+        <div class="label">Files</div>
+        <div class="value mono">@Model.FileCount</div>
+    </div>
+    <div class="meta-card">
+        <div class="label">Tables</div>
+        <div class="value mono">@Model.TableCount</div>
+    </div>
+</div>
+
+<h3 style="margin-top:2rem;">Storage Nodes</h3>
+<table>
+    <thead>
+        <tr>
+            <th>Node ID</th>
+            <th>Status</th>
+            <th>Last Check</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (Model.Nodes.Count == 0)
+    {
+        <tr><td colspan="3" style="color:var(--muted);">No storage nodes configured.</td></tr>
+    }
+    else
+    {
+        @foreach (var n in Model.Nodes)
+        {
+            <tr>
+                <td class="mono">@n.NodeId</td>
+                <td><span class="badge @(n.Alive ? "ok" : "err")">@(n.Alive ? "HEALTHY" : "UNREACHABLE")</span></td>
+                <td class="mono" style="font-size:.8rem;">@n.LastCheck.ToString("HH:mm:ss")</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
