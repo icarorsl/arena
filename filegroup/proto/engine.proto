@@ -56,6 +56,7 @@ enum VersionState {
     VERSION_DELETED = 3;
     VERSION_EXPIRED = 4;
     VERSION_SESSION_TIMED_OUT = 5;
+    VERSION_MARKED_DELETED = 6;
 }
 
 // ============================================================================

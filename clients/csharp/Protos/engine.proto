@@ -27,6 +27,10 @@ service Engine {
     rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
     rpc GetFileInfo(GetFileInfoRequest) returns (GetFileInfoResponse);
 
+    // Table management
+    rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+    rpc GetTables(GetTablesRequest) returns (GetTablesResponse);
+
     // Session management
     rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
 }
@@ -52,6 +56,7 @@ enum VersionState {
     VERSION_DELETED = 3;
     VERSION_EXPIRED = 4;
     VERSION_SESSION_TIMED_OUT = 5;
+    VERSION_MARKED_DELETED = 6;
 }
 
 // ============================================================================
@@ -220,6 +225,7 @@ message VersionInfo {
     uint32 chunk_count = 5;
     uint64 expires_at_us = 6;
     EncryptionAlgo encryption = 7;
+    uint64 created_at_us = 8;
 }
 
 message ListVersionsResponse {
@@ -247,5 +253,42 @@ message CancelSessionRequest {
 
 message CancelSessionResponse {
     bool success = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// Table Management
+// ============================================================================
+
+message CreateTableRequest {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;           // 0 = inherit
+    uint32 replication_factor = 5;    // 0 = inherit
+    uint32 max_versions = 6;          // 0 = inherit
+    uint32 file_expires_in_days = 7;  // 0 = no expiry
+}
+
+message CreateTableResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message GetTablesRequest {}
+
+message TableInfo {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;
+    uint32 replication_factor = 5;
+    EncryptionAlgo encryption = 6;
+    uint32 max_versions = 7;
+    uint32 file_expires_in_days = 8;
+}
+
+message GetTablesResponse {
+    repeated TableInfo tables = 1;
     string error = 2;
 }
