@@ -67,7 +67,7 @@ public class FileModel : PageModel
         try
         {
             await _client.DeleteFileAsync(new DeleteFileRequest { LogicalFileId = (ulong)id });
-            return RedirectToPage(new { id, deleted = true });
+            return RedirectToPage("/Files");
         }
         catch (Exception ex)
         {
