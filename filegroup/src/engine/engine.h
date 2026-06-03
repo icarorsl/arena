@@ -28,6 +28,14 @@ public:
     std::vector<uint8_t> read_chunk(uint64_t logical_file_id, uint32_t version, uint32_t chunk_index);
     const ClusterConfig& config() const { return config_; }
     const UploadSession* get_session(uint64_t session_id) const;
+
+    /// Update a chunk's location after compaction moves it to a new segment.
+    void update_chunk_location(uint64_t file_id, uint32_t chunk_index,
+                               const std::string& segment_file, uint64_t offset, uint64_t size);
+
+    /// Get storage nodes for direct segment access (compaction).
+    const std::vector<StorageClient*>& storage_nodes() const { return storage_nodes_; }
+
 private:
     const FileGroupConfig* find_group(uint32_t gid) const;
     const FileTableConfig* find_table(uint32_t tid) const;

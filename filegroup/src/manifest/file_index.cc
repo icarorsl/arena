@@ -254,6 +254,15 @@ std::vector<LogicalFileEntry> FileIndex::list_files(uint16_t table_id, uint32_t 
     return result;
 }
 
+std::vector<LogicalFileEntry> FileIndex::all_files() const {
+    std::vector<LogicalFileEntry> result;
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    for (const auto& p : files_) {
+        result.push_back(p.second);
+    }
+    return result;
+}
+
 std::unordered_map<uint16_t, NodeState> FileIndex::get_node_health() const {
     std::shared_lock<std::shared_mutex> lock(mutex_);
     return node_health_;

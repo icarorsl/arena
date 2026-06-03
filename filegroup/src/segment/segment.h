@@ -80,6 +80,9 @@ public:
     /// Read raw chunk bytes from offset+length (pread — thread-safe for reads).
     std::vector<uint8_t> read_chunk(uint64_t offset, uint64_t length) const;
 
+    /// Read only the ChunkEntryHeader at the given offset (does not read data).
+    ChunkEntryHeader read_chunk_header_at(uint64_t offset) const;
+
     /// Get the segment header.
     const SegmentFileHeader& header() const { return header_; }
 

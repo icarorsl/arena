@@ -151,6 +151,15 @@ std::vector<uint8_t> Segment::read_chunk(uint64_t offset, uint64_t length) const
 uint32_t Segment::chunk_count() const { return header_.chunk_count; }
 uint64_t Segment::total_data_bytes() const { return header_.total_data_bytes; }
 
+ChunkEntryHeader Segment::read_chunk_header_at(uint64_t offset) const {
+    ChunkEntryHeader entry;
+    ssize_t n = pread(fd_, &entry, sizeof(entry), offset);
+    if (n != sizeof(entry)) {
+        throw std::runtime_error("Failed to read chunk header at offset " + std::to_string(offset));
+    }
+    return entry;
+}
+
 void Segment::write_header() {
     ssize_t n = pwrite(fd_, &header_, sizeof(header_), 0);
     if (n != sizeof(header_)) {

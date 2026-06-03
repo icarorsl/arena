@@ -109,6 +109,10 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
 }
 std::vector<uint8_t> Engine::read_chunk(uint64_t lid,uint32_t v,uint32_t ci){auto d=read_file(lid,v);return d;}
 const UploadSession* Engine::get_session(uint64_t sid)const{std::lock_guard<std::mutex>lk(sessions_mutex_);auto it=sessions_.find(sid);return it!=sessions_.end()?&it->second:nullptr;}
+void Engine::update_chunk_location(uint64_t fid,uint32_t ci,const std::string& sf,uint64_t off,uint64_t sz){
+ std::lock_guard<std::mutex> lk(chunks_mutex_);
+ chunk_locs_[fid][ci]={sf,off,sz};
+}
 const FileGroupConfig* Engine::find_group(uint32_t gid)const{for(auto&g:config_.groups)if(g.group_id==gid)return&g;return nullptr;}
 const FileTableConfig* Engine::find_table(uint32_t tid)const{for(auto&t:config_.tables)if(t.table_id==tid)return&t;return nullptr;}
 StorageClient* Engine::get_storage_node(uint16_t nid){auto it=node_map_.find(nid);return it!=node_map_.end()?it->second:nullptr;}

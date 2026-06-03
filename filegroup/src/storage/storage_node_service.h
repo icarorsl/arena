@@ -76,6 +76,12 @@ public:
     };
     std::vector<SegmentInventory> report_segments() const;
 
+    /// List all segment file paths on this node (for compaction).
+    std::vector<std::string> list_segments() const;
+
+    /// Get the data directory path.
+    const std::string& data_dir() const { return data_dir_; }
+
     // ---- Node info ----
     uint16_t node_id() const { return node_id_; }
 
@@ -144,6 +150,8 @@ public:
     bool delete_page(const std::string& page_path);
     bool ping();
     uint16_t node_id() const;
+    std::vector<std::string> list_segments() const;
+    StorageServer* server() { return server_; }
 
 private:
     StorageServer* server_;

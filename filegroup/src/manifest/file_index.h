@@ -103,6 +103,7 @@ public:
     std::vector<uint32_t> get_confirmed_chunks(uint64_t session_id) const;
     bool is_chunk_confirmed(uint64_t session_id, uint32_t chunk_index) const;
     std::vector<LogicalFileEntry> list_files(uint16_t table_id, uint32_t group_id) const;
+    std::vector<LogicalFileEntry> all_files() const;
     std::vector<TableEntry> get_tables() const;
     std::unordered_map<uint16_t, NodeState> get_node_health() const;
 

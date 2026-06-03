@@ -219,6 +219,13 @@ std::vector<LogicalFileEntry> RegistryClient::list_files(uint16_t table_id, uint
     return {};
 }
 
+std::vector<LogicalFileEntry> RegistryClient::all_files() {
+    if (auto* leader = find_leader()) {
+        return leader->file_index().all_files();
+    }
+    return {};
+}
+
 std::vector<uint32_t> RegistryClient::get_confirmed_chunks(uint64_t session_id) {
     if (auto* leader = find_leader()) {
         return leader->file_index().get_confirmed_chunks(session_id);

@@ -81,9 +81,10 @@ target_link_libraries(filegroup_encryption PRIVATE filegroup_common OpenSSL::Cry
 # Compaction library
 add_library(filegroup_compaction OBJECT
     src/compaction/compaction.cc
+    src/compaction/compaction_service.cc
 )
 target_include_directories(filegroup_compaction PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_compaction PRIVATE filegroup_common filegroup_segment)
+target_link_libraries(filegroup_compaction PRIVATE filegroup_common filegroup_segment filegroup_registry filegroup_engine filegroup_storage)
 
 # Registry Service library
 add_library(filegroup_registry OBJECT

@@ -88,6 +88,9 @@ public:
     /// List files by group/table.
     std::vector<LogicalFileEntry> list_files(uint16_t table_id, uint32_t group_id);
 
+    /// Return all files (for compaction/scrubbing).
+    std::vector<LogicalFileEntry> all_files();
+
     /// Get confirmed chunks for a session.
     std::vector<uint32_t> get_confirmed_chunks(uint64_t session_id);
 

@@ -126,6 +126,15 @@ std::vector<StorageServer::SegmentInventory> StorageServer::report_segments() co
     return inventory;
 }
 
+std::vector<std::string> StorageServer::list_segments() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::string> paths;
+    for (const auto& [key, seg] : segments_) {
+        paths.push_back(seg->path());
+    }
+    return paths;
+}
+
 Segment* StorageServer::get_active_segment(uint32_t group_id, uint32_t table_id,
                                              uint64_t expires_at_us) {
     SegmentKey key{group_id, table_id, 0};
@@ -193,10 +202,12 @@ bool StorageClient::delete_page(const std::string& page_path) {
     return server_->delete_page(page_path);
 }
 
-bool StorageClient::ping() {
-    return server_->ping();
-}
+bool StorageClient::ping() { return server_->ping(); }
 
 uint16_t StorageClient::node_id() const { return node_id_; }
+
+std::vector<std::string> StorageClient::list_segments() const {
+    return server_->list_segments();
+}
 
 }  // namespace filegroup
