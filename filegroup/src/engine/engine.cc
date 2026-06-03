@@ -33,9 +33,9 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  if(lid && mv>0){
   auto* ef=registry_->get_file(lid);
   if(ef){
-   uint32_t complete_count=0;
-   for(auto&[vn,ver]:ef->versions) if(ver.state==VersionState::COMPLETE) complete_count++;
-   if(complete_count>=mv) throw std::runtime_error("max_versions="+std::to_string(mv)+" reached ("+std::to_string(complete_count)+" live versions); delete a version first");
+   uint32_t live_count=0;
+   for(auto&[vn,ver]:ef->versions) if(ver.state==VersionState::COMPLETE||ver.state==VersionState::MARKED_DELETED) live_count++;
+   if(live_count>=mv) throw std::runtime_error("max_versions="+std::to_string(mv)+" reached ("+std::to_string(live_count)+" live versions); delete a version first");
   }
  }
  auto st=(ea>0)?SegmentType::PAGE:SegmentType::STANDARD;
@@ -87,22 +87,30 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs,std::string* note){
  VersionCompleteEntry e;e.file_id=s->file_id;e.logical_file_id=s->logical_file_id;e.version_number=s->version_number;e.content_checksum=cs;e.total_size=s->total_bytes;e.chunk_count=(uint32_t)s->confirmed_chunks.size();e.created_at_us=s->created_at_us;
  registry_->append_entry((uint32_t)ManifestEntryType::VERSION_COMPLETE,&e,sizeof(e));
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
- // Enforce max_versions
+ // Enforce max_versions: count all non-DELETED versions; delete worst-state first
  if(s->resolved_max_versions>0){
   auto* f=registry_->get_file(s->logical_file_id);
   if(f){
-   std::vector<uint32_t> complete_versions;
-   for(auto&[vn,ver]:f->versions) if(ver.state==VersionState::COMPLETE) complete_versions.push_back(vn);
-   std::sort(complete_versions.begin(),complete_versions.end());
-   while(complete_versions.size()>s->resolved_max_versions){
-    uint32_t oldest_vn=complete_versions.front();
+   // Collect versions: COMPLETE + MARKED_DELETED (DELETED don't count — already gone)
+   std::vector<std::pair<uint32_t,int>> ranked; // (version_number, priority)
+   for(auto&[vn,ver]:f->versions){
+    if(ver.state==VersionState::COMPLETE) ranked.push_back({vn,2});
+    else if(ver.state==VersionState::MARKED_DELETED) ranked.push_back({vn,1});
+    // DELETED (priority 0) not counted — already reclaimed
+   }
+   std::sort(ranked.begin(),ranked.end(),[](auto& a,auto& b){
+    if(a.second!=b.second) return a.second<b.second; // lowest priority first
+    return a.first<b.first; // oldest first within same priority
+   });
+   while(ranked.size()>s->resolved_max_versions){
+    auto [oldest_vn,prio]=ranked.front();
     VersionDeletedEntry vd;vd.file_id=f->versions.at(oldest_vn).file_id;vd.logical_file_id=s->logical_file_id;vd.version_number=oldest_vn;
     registry_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&vd,sizeof(vd));
     MaxVersionsEnforcedEntry mv;mv.logical_file_id=s->logical_file_id;mv.deleted_version_number=oldest_vn;mv.deleted_file_id=f->versions.at(oldest_vn).file_id;
     registry_->append_entry((uint32_t)ManifestEntryType::MAX_VERSIONS_ENFORCED,&mv,sizeof(mv));
-    std::cout << "[engine] max_versions: deleted v" << oldest_vn << " of file " << s->logical_file_id << "\n";
+    std::cout << "[engine] max_versions: deleted v" << oldest_vn << " (prio="<<prio<<") of file " << s->logical_file_id << "\n";
     if(note) *note = "Auto-deleted v" + std::to_string(oldest_vn) + " (max_versions=" + std::to_string(s->resolved_max_versions) + ")";
-    complete_versions.erase(complete_versions.begin());
+    ranked.erase(ranked.begin());
    }
   }
  }
