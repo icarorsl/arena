@@ -13,7 +13,7 @@ cd ../clients/csharp && dotnet run --project DemoLocal   # Run demo
 
 ```bash
 mkdir build && cd build && cmake .. && make -j$(nproc)
-./engine_grp                            # Start engine on :8443
+./engine_grpc                           # Start engine on :8443
 cd ../../clients/csharp && dotnet run --project DemoLocal
 ```
 
