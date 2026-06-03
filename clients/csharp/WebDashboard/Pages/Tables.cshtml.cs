@@ -67,6 +67,7 @@ public class TablesModel : PageModel
 
             foreach (var t in Tables)
             {
+                if (t.GroupId == 0 || t.TableId == 0) continue;
                 var files = await _client.ListFilesAsync(new ListFilesRequest
                 {
                     GroupId = t.GroupId,

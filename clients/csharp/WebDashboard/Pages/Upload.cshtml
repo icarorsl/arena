@@ -45,7 +45,7 @@
                     <!option value="@t.TableId" selected=@(t.TableId == Model.PreselectedTable)>@t.Name (ID @t.TableId, Group @t.GroupId)</!option>
                 }
             </select>
-            <input type="hidden" name="GroupId" value="@(Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId)" />
+            <input type="hidden" name="GroupId" value="@(Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId > 0 ? Model.Tables.FirstOrDefault(t => t.TableId == Model.PreselectedTable).GroupId : 1)" />
         </div>
         <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">
             Upload
