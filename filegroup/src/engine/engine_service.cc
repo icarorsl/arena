@@ -1,5 +1,6 @@
 #include "engine/engine_service.h"
 #include <algorithm>
+#include <cstring>
 #include <sys/stat.h>
 #include "common/clock.h"
 namespace filegroup {
@@ -80,4 +81,16 @@ std::vector<EngineServer::FIR> EngineServer::list_files(uint32_t gid,uint32_t ti
 }
 EngineServer::SR EngineServer::cancel_session(uint64_t sid){auto* s=engine_->get_session(sid);if(!s)return{false,"not found"};return{true,""};}
 bool EngineServer::ping()const{return true;}
+
+std::vector<EngineServer::TIR> EngineServer::get_tables(){
+ std::vector<TIR> r;auto ts=rc_->get_tables();
+ for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
+ return r;
+}
+
+EngineServer::SR EngineServer::create_table(uint32_t tid,uint32_t gid,const std::string& name){
+ TableCreatedEntry e{};e.table_id=tid;e.group_id=gid;strncpy(e.name,name.c_str(),sizeof(e.name)-1);
+ auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::TABLE_CREATED,&e,sizeof(e));(void)lsn;
+ return{ok,ok?"":"create failed"};
+}
 }

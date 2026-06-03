@@ -1,45 +1,74 @@
 using Filegroup.Engine;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace WebDashboard.Pages;
 
+[IgnoreAntiforgeryToken]
 public class TablesModel : PageModel
 {
     private readonly Engine.EngineClient _client;
 
     public List<TableSummary> Tables { get; set; } = new();
     public string? Error { get; set; }
+    public bool Created { get; set; }
+
+    [BindProperty] public uint TableId { get; set; }
+    [BindProperty] public uint GroupId { get; set; } = 1;
+    [BindProperty] public string TableName { get; set; } = "";
 
     public TablesModel(Engine.EngineClient client) => _client = client;
 
-    public async Task OnGetAsync()
+    public async Task OnGetAsync() => await LoadTables();
+
+    public async Task<IActionResult> OnPostAsync()
     {
         try
         {
-            // Query all tables we know about (Phase 1: group 1)
-            var files = await _client.ListFilesAsync(new ListFilesRequest
+            await _client.CreateTableAsync(new CreateTableRequest
             {
-                GroupId = 1,
-                TableId = 1,
-                PageSize = 1000
+                TableId = TableId,
+                GroupId = GroupId,
+                Name = TableName
             });
+            Created = true;
+        }
+        catch (Exception ex)
+        {
+            Error = $"Create failed: {ex.Message}";
+        }
+        await LoadTables();
+        return Page();
+    }
 
-            var byTable = new Dictionary<(uint group, uint table), TableSummary>();
-
-            foreach (var f in files.Files)
+    private async Task LoadTables()
+    {
+        try
+        {
+            var resp = await _client.GetTablesAsync(new GetTablesRequest());
+            Tables = resp.Tables.Select(t => new TableSummary
             {
-                var key = (f.GroupId, f.TableId);
-                if (!byTable.ContainsKey(key))
-                    byTable[key] = new TableSummary { GroupId = f.GroupId, TableId = f.TableId };
+                TableId = t.TableId,
+                GroupId = t.GroupId,
+                Name = t.Name
+            }).ToList();
 
-                var t = byTable[key];
-                t.FileCount++;
-                t.TotalSize += f.TotalSize;
-                if (f.State == Filegroup.Engine.FileState.FileActive) t.ActiveCount++;
-                else t.DeletedCount++;
+            foreach (var t in Tables)
+            {
+                var files = await _client.ListFilesAsync(new ListFilesRequest
+                {
+                    GroupId = t.GroupId,
+                    TableId = t.TableId,
+                    PageSize = 1000
+                });
+                t.FileCount = (uint)files.Files.Count;
+                foreach (var f in files.Files)
+                {
+                    t.TotalSize += f.TotalSize;
+                    if (f.State == Filegroup.Engine.FileState.FileActive) t.ActiveCount++;
+                    else t.DeletedCount++;
+                }
             }
-
-            Tables = byTable.Values.OrderBy(t => t.TableId).ToList();
         }
         catch (Exception ex)
         {
@@ -51,6 +80,7 @@ public class TablesModel : PageModel
     {
         public uint TableId { get; set; }
         public uint GroupId { get; set; }
+        public string Name { get; set; } = "";
         public uint FileCount { get; set; }
         public uint ActiveCount { get; set; }
         public uint DeletedCount { get; set; }

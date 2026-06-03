@@ -6,6 +6,35 @@
 
 <h2>Tables</h2>
 
+@if (Model.Created)
+{
+    <div class="status" style="border-color:var(--ok);margin-bottom:1rem;">
+        <p style="color:var(--ok);">Table created.</p>
+    </div>
+}
+
+<details style="margin-bottom:1.5rem;">
+    <summary style="cursor:pointer;color:var(--accent);">+ Create Table</summary>
+    <form method="post" style="margin-top:1rem;display:flex;flex-direction:column;gap:.75rem;max-width:400px;">
+        @Html.AntiForgeryToken()
+        <div style="display:flex;gap:.75rem;">
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Table ID</label>
+                <input type="number" name="TableId" required min="1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+            <div style="flex:1;">
+                <label style="font-size:.8rem;color:var(--muted);">Group ID</label>
+                <input type="number" name="GroupId" value="1" required min="1" style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+            </div>
+        </div>
+        <div>
+            <label style="font-size:.8rem;color:var(--muted);">Name</label>
+            <input type="text" name="TableName" required style="width:100%;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:.35rem .5rem;" />
+        </div>
+        <button type="submit" class="btn" style="align-self:flex-start;cursor:pointer;">Create</button>
+    </form>
+</details>
+
 @if (!string.IsNullOrEmpty(Model.Error))
 {
     <div class="status" style="border-color:var(--err);margin-bottom:1rem;">
@@ -26,7 +55,8 @@ else
         <thead>
             <tr>
                 <th>Table ID</th>
-                <th>Group ID</th>
+                <th>Name</th>
+                <th>Group</th>
                 <th>Files</th>
                 <th>Active</th>
                 <th>Deleted</th>
@@ -40,6 +70,7 @@ else
                 <td class="mono">
                     <a href="/Files?group=@t.GroupId&table=@t.TableId">@t.TableId</a>
                 </td>
+                <td>@t.Name</td>
                 <td>@t.GroupId</td>
                 <td class="mono">@t.FileCount</td>
                 <td class="mono"><span class="badge ok">@t.ActiveCount</span></td>

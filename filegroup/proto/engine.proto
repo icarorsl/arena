@@ -27,6 +27,10 @@ service Engine {
     rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
     rpc GetFileInfo(GetFileInfoRequest) returns (GetFileInfoResponse);
 
+    // Table management
+    rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+    rpc GetTables(GetTablesRequest) returns (GetTablesResponse);
+
     // Session management
     rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
 }
@@ -248,5 +252,40 @@ message CancelSessionRequest {
 
 message CancelSessionResponse {
     bool success = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// Table Management
+// ============================================================================
+
+message CreateTableRequest {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;           // 0 = inherit
+    uint32 replication_factor = 5;    // 0 = inherit
+    uint32 max_versions = 6;          // 0 = inherit
+}
+
+message CreateTableResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message GetTablesRequest {}
+
+message TableInfo {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;
+    uint32 replication_factor = 5;
+    EncryptionAlgo encryption = 6;
+    uint32 max_versions = 7;
+}
+
+message GetTablesResponse {
+    repeated TableInfo tables = 1;
     string error = 2;
 }

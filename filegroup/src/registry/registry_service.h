@@ -97,6 +97,9 @@ public:
     /// Get cluster health.
     std::unordered_map<uint16_t, NodeState> get_cluster_health();
 
+    /// Table management.
+    std::vector<TableEntry> get_tables();
+
     /// Find the current leader server.
     RegistryServer* find_leader();
 

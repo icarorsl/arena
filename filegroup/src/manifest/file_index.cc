@@ -271,4 +271,23 @@ uint64_t FileIndex::next_session_id() {
     return next_session_id_.fetch_add(1);
 }
 
+void FileIndex::apply_table_created(const TableCreatedEntry& e) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    TableEntry t;
+    t.table_id = e.table_id;
+    t.group_id = e.group_id;
+    t.name = e.name; // char[64] to std::string
+    t.chunk_size = e.chunk_size;
+    t.replication_factor = e.replication_factor;
+    t.encryption = static_cast<EncryptionAlgo>(e.encryption);
+    t.max_versions = e.max_versions;
+    t.expiry_granularity = static_cast<ExpiryGranularity>(e.expiry_granularity);
+    tables_.push_back(std::move(t));
+}
+
+std::vector<TableEntry> FileIndex::get_tables() const {
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    return tables_;
+}
+
 }  // namespace filegroup

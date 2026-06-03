@@ -92,6 +92,12 @@ RegistryServer::RegistryServer(uint32_t node_id,
                 }
                 break;
             }
+            case ManifestEntryType::TABLE_CREATED: {
+                if (body_length >= sizeof(TableCreatedEntry)) {
+                    file_index_.apply_table_created(*static_cast<const TableCreatedEntry*>(body));
+                }
+                break;
+            }
             default:
                 // Phase 3 / unknown entry types — silently skip (forward compatibility)
                 std::cerr << "[registry] Unknown manifest entry type: " << entry_type << std::endl;
@@ -228,9 +234,15 @@ void RegistryClient::report_node_health(uint16_t node_id, NodeState state) {
 }
 
 std::unordered_map<uint16_t, NodeState> RegistryClient::get_cluster_health() {
-    // Query from any server (all have replicated state via Raft)
     for (auto* server : servers_) {
         return server->file_index().get_node_health();
+    }
+    return {};
+}
+
+std::vector<TableEntry> RegistryClient::get_tables() {
+    for (auto* server : servers_) {
+        return server->file_index().get_tables();
     }
     return {};
 }

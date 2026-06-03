@@ -183,6 +183,38 @@ public:
         return result.success ? Status::OK : Status(grpc::INTERNAL, result.error);
     }
 
+    // ── Table Management ────────────────────────────────────────────────
+
+    grpc::Status CreateTable(ServerContext* ctx,
+                              const filegroup::engine::CreateTableRequest* req,
+                              filegroup::engine::CreateTableResponse* resp) override
+    {
+        (void)ctx;
+        auto result = server_.create_table(req->table_id(), req->group_id(), req->name());
+        resp->set_success(result.success);
+        if (!result.error.empty()) resp->set_error(result.error);
+        return result.success ? Status::OK : Status(grpc::INTERNAL, result.error);
+    }
+
+    grpc::Status GetTables(ServerContext* ctx,
+                            const filegroup::engine::GetTablesRequest* req,
+                            filegroup::engine::GetTablesResponse* resp) override
+    {
+        (void)ctx; (void)req;
+        auto tables = server_.get_tables();
+        for (auto& t : tables) {
+            auto* ti = resp->add_tables();
+            ti->set_table_id(t.table_id);
+            ti->set_group_id(t.group_id);
+            ti->set_name(t.name);
+            ti->set_chunk_size(t.chunk_size);
+            ti->set_replication_factor(t.replication_factor);
+            ti->set_encryption(static_cast<filegroup::engine::EncryptionAlgo>(t.encryption));
+            ti->set_max_versions(t.max_versions);
+        }
+        return Status::OK;
+    }
+
     // ReadFile is server-streaming — simplified for Phase 1
     grpc::Status ReadFile(ServerContext* ctx,
                            const filegroup::engine::ReadFileRequest* req,

@@ -4,20 +4,40 @@ package filegroup.engine;
 
 option go_package = "github.com/filegroup/proto/engine";
 
+// ============================================================================
+// Engine Service — Client-facing gRPC API
+// Exposed on port 8443 with mTLS. All RPCs require x-api-key metadata.
+// ============================================================================
+
 service Engine {
+    // Upload a new file or new version of an existing file
     rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
     rpc ResumeSession(ResumeSessionRequest) returns (ResumeSessionResponse);
     rpc WriteChunk(WriteChunkRequest) returns (WriteChunkResponse);
     rpc CompleteSession(CompleteSessionRequest) returns (CompleteSessionResponse);
+
+    // Read a file
     rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
     rpc ReadChunk(ReadChunkRequest) returns (ReadChunkResponse);
+
+    // File management
     rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
     rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);
     rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
     rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
     rpc GetFileInfo(GetFileInfoRequest) returns (GetFileInfoResponse);
+
+    // Table management
+    rpc CreateTable(CreateTableRequest) returns (CreateTableResponse);
+    rpc GetTables(GetTablesRequest) returns (GetTablesResponse);
+
+    // Session management
     rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
 }
+
+// ============================================================================
+// Enums
+// ============================================================================
 
 enum EncryptionAlgo {
     ENCRYPTION_NONE = 0;
@@ -38,13 +58,17 @@ enum VersionState {
     VERSION_SESSION_TIMED_OUT = 5;
 }
 
+// ============================================================================
+// OpenSession — Begin uploading a file
+// ============================================================================
+
 message OpenSessionRequest {
-    uint32 group_id = 1;
-    uint32 table_id = 2;
-    uint64 logical_file_id = 3;
-    uint64 total_size = 4;
-    uint32 expected_chunks = 5;
-    uint32 file_expires_in_days = 6;
+    uint32 group_id = 1;                        // File group ID
+    uint32 table_id = 2;                        // Table ID
+    uint64 logical_file_id = 3;                  // 0 = new file, non-zero = new version
+    uint64 total_size = 4;                       // Expected total file size (0 = unknown)
+    uint32 expected_chunks = 5;                  // 0 = unknown
+    uint32 file_expires_in_days = 6;             // 0 = inherit from config
 }
 
 message OpenSessionResponse {
@@ -52,27 +76,35 @@ message OpenSessionResponse {
     uint64 file_id = 2;
     uint64 logical_file_id = 3;
     uint32 version_number = 4;
-    uint64 resolved_chunk_size = 5;
-    uint32 expected_chunks = 6;
-    EncryptionAlgo encryption = 7;
+    uint64 resolved_chunk_size = 5;              // Chunk size to use for writes
+    uint32 expected_chunks = 6;                  // Computed if total_size known
+    EncryptionAlgo encryption = 7;               // Resolved encryption algo
     string error = 8;
 }
+
+// ============================================================================
+// WriteChunk — Write a single chunk of data
+// ============================================================================
 
 message WriteChunkRequest {
     uint64 session_id = 1;
     uint32 chunk_index = 2;
-    bytes data = 3;
+    bytes data = 3;                              // Plaintext (will be encrypted server-side if needed)
 }
 
 message WriteChunkResponse {
     bool success = 1;
-    bool already_confirmed = 2;
+    bool already_confirmed = 2;                  // True if idempotent retry
     string error = 3;
 }
 
+// ============================================================================
+// CompleteSession — Finalize upload, file becomes readable
+// ============================================================================
+
 message CompleteSessionRequest {
     uint64 session_id = 1;
-    uint32 content_checksum = 2;
+    uint32 content_checksum = 2;                 // CRC32C of full file plaintext (0 = skip check)
 }
 
 message CompleteSessionResponse {
@@ -82,6 +114,10 @@ message CompleteSessionResponse {
     uint32 version_number = 4;
     string error = 5;
 }
+
+// ============================================================================
+// ResumeSession — Resume an interrupted upload
+// ============================================================================
 
 message ResumeSessionRequest {
     uint64 session_id = 1;
@@ -93,23 +129,31 @@ message ResumeSessionResponse {
     uint64 logical_file_id = 3;
     uint32 version_number = 4;
     uint64 resolved_chunk_size = 5;
-    repeated uint32 confirmed_chunks = 6;
+    repeated uint32 confirmed_chunks = 6;        // Already-written chunk indices
     EncryptionAlgo encryption = 7;
     string error = 8;
 }
 
+// ============================================================================
+// ReadFile — Stream all chunks of a file
+// ============================================================================
+
 message ReadFileRequest {
     uint64 logical_file_id = 1;
-    uint32 version_number = 2;
+    uint32 version_number = 2;                   // 0 = latest complete version
 }
 
 message ReadFileResponse {
     uint32 chunk_index = 1;
-    bytes data = 2;
-    uint32 content_checksum = 3;
+    bytes data = 2;                              // Plaintext chunk
+    uint32 content_checksum = 3;                 // Full file CRC32C (sent with last chunk)
     bool is_last_chunk = 4;
     string error = 5;
 }
+
+// ============================================================================
+// ReadChunk — Read a single chunk
+// ============================================================================
 
 message ReadChunkRequest {
     uint64 logical_file_id = 1;
@@ -121,6 +165,10 @@ message ReadChunkResponse {
     bytes data = 1;
     string error = 2;
 }
+
+// ============================================================================
+// File/Version Management
+// ============================================================================
 
 message DeleteFileRequest {
     uint64 logical_file_id = 1;
@@ -144,8 +192,8 @@ message DeleteVersionResponse {
 message ListFilesRequest {
     uint32 group_id = 1;
     uint32 table_id = 2;
-    string page_token = 3;
-    uint32 page_size = 4;
+    string page_token = 3;                       // Pagination token
+    uint32 page_size = 4;                        // Max results
 }
 
 message FileInfo {
@@ -194,11 +242,50 @@ message GetFileInfoResponse {
     string error = 3;
 }
 
+// ============================================================================
+// Session Management
+// ============================================================================
+
 message CancelSessionRequest {
     uint64 session_id = 1;
 }
 
 message CancelSessionResponse {
     bool success = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// Table Management
+// ============================================================================
+
+message CreateTableRequest {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;           // 0 = inherit
+    uint32 replication_factor = 5;    // 0 = inherit
+    uint32 max_versions = 6;          // 0 = inherit
+}
+
+message CreateTableResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message GetTablesRequest {}
+
+message TableInfo {
+    uint32 table_id = 1;
+    uint32 group_id = 2;
+    string name = 3;
+    uint64 chunk_size = 4;
+    uint32 replication_factor = 5;
+    EncryptionAlgo encryption = 6;
+    uint32 max_versions = 7;
+}
+
+message GetTablesResponse {
+    repeated TableInfo tables = 1;
     string error = 2;
 }

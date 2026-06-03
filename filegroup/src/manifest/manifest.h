@@ -156,6 +156,21 @@ struct ChunkLocationUpdatedEntry {
     uint64_t offset;             // New offset in segment
 };
 
+/**
+ * TABLE_CREATED: A new file table was created dynamically.
+ * Tables are replicated via Raft like all other manifest entries.
+ */
+struct TableCreatedEntry {
+    uint32_t table_id;
+    uint32_t group_id;
+    char     name[64];           // Null-terminated table name
+    uint64_t chunk_size;         // 0 = inherit from group
+    uint8_t  replication_factor; // 0 = inherit
+    uint8_t  encryption;         // EncryptionAlgo, 0xFF = inherit
+    uint32_t max_versions;       // 0 = inherit
+    uint8_t  expiry_granularity; // ExpiryGranularity, 0xFF = inherit
+};
+
 // Phase 3+ entry types (declared for forward compatibility)
 // PROJECTION_* entries: ProjectionEntry structures (Phase 3 — not implemented)
 

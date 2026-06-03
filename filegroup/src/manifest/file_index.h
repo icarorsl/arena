@@ -52,6 +52,18 @@ struct VersionEntry {
     // std::map<uint16_t, ProjectionEntry> projections;
 };
 
+// Simple table entry for dynamic table creation
+struct TableEntry {
+    uint32_t table_id;
+    uint32_t group_id;
+    std::string name;
+    uint64_t chunk_size;
+    uint8_t replication_factor;
+    EncryptionAlgo encryption;
+    uint32_t max_versions;
+    ExpiryGranularity expiry_granularity;
+};
+
 // Logical file entry (all versions)
 struct LogicalFileEntry {
     uint64_t logical_file_id;
@@ -81,6 +93,7 @@ public:
     void apply_page_deleted(const PageDeletedEntry& e);
     void apply_node_health(const NodeHealthEntry& e);
     void apply_max_versions_enforced(const MaxVersionsEnforcedEntry& e);
+    void apply_table_created(const TableCreatedEntry& e);
 
     // Query methods
     const LogicalFileEntry* get_file(uint64_t logical_file_id) const;
@@ -89,6 +102,7 @@ public:
     std::vector<uint32_t> get_confirmed_chunks(uint64_t session_id) const;
     bool is_chunk_confirmed(uint64_t session_id, uint32_t chunk_index) const;
     std::vector<LogicalFileEntry> list_files(uint16_t table_id, uint32_t group_id) const;
+    std::vector<TableEntry> get_tables() const;
     std::unordered_map<uint16_t, NodeState> get_node_health() const;
 
     // ID generation
@@ -100,6 +114,7 @@ private:
     mutable std::shared_mutex mutex_;
     std::unordered_map<uint64_t, LogicalFileEntry> files_;     // by logical_file_id
     std::unordered_map<uint64_t, uint64_t> sessions_;          // session_id → file_id
+    std::vector<TableEntry> tables_;
     std::unordered_map<uint16_t, NodeState> node_health_;
     std::atomic<uint64_t> next_logical_file_id_{1};
     std::atomic<uint64_t> next_file_id_{1};
