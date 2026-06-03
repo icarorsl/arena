@@ -27,7 +27,7 @@ public:
     RCR read_chunk(uint64_t lid,uint32_t vn,uint32_t ci);
     struct SR { bool success=false; std::string error; };
     SR delete_file(uint64_t lid),delete_version(uint64_t lid,uint32_t vn),cancel_session(uint64_t sid);
-    struct FIR { bool success=false; uint64_t logical_file_id=0; uint32_t table_id=0,group_id=0,latest_version=0; FileState state=FileState::ACTIVE; std::string error; };
+    struct FIR { bool success=false; uint64_t logical_file_id=0,total_size=0,created_at_us=0; uint32_t table_id=0,group_id=0,latest_version=0; FileState state=FileState::ACTIVE; std::string error; };
     FIR get_file_info(uint64_t lid);
     struct VIR { uint64_t file_id=0; uint32_t version_number=0; VersionState state=VersionState::UPLOADING; uint64_t total_size=0,expires_at_us=0; uint32_t chunk_count=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; };
     std::vector<VIR> list_versions(uint64_t lid);

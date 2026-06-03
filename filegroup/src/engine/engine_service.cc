@@ -57,7 +57,10 @@ EngineServer::SR EngineServer::delete_version(uint64_t,uint32_t){return{false,"n
 EngineServer::FIR EngineServer::get_file_info(uint64_t lid){
  FIR r;r.logical_file_id=lid;auto* f=rc_->get_file(lid);
  if(!f){r.error="not found";return r;}
- r.success=true;r.table_id=f->table_id;r.group_id=f->group_id;r.latest_version=f->latest_complete_version;return r;
+ r.success=true;r.table_id=f->table_id;r.group_id=f->group_id;r.latest_version=f->latest_complete_version;
+ auto vit=f->versions.find(f->latest_complete_version);
+ if(vit!=f->versions.end()){r.total_size=vit->second.total_size;r.created_at_us=0;r.state=(vit->second.state==VersionState::DELETED)?FileState::DELETED:FileState::ACTIVE;}
+ return r;
 }
 std::vector<EngineServer::VIR> EngineServer::list_versions(uint64_t lid){
  std::vector<VIR> r;auto* f=rc_->get_file(lid);if(!f)return r;
@@ -68,7 +71,11 @@ std::vector<EngineServer::VIR> EngineServer::list_versions(uint64_t lid){
 }
 std::vector<EngineServer::FIR> EngineServer::list_files(uint32_t gid,uint32_t tid){
  std::vector<FIR> r;auto fs=rc_->list_files((uint16_t)tid,gid);
- for(auto&f:fs){FIR i;i.success=true;i.logical_file_id=f.logical_file_id;i.table_id=f.table_id;i.group_id=f.group_id;i.latest_version=f.latest_complete_version;r.push_back(i);}
+ for(auto&f:fs){
+  FIR i;i.success=true;i.logical_file_id=f.logical_file_id;i.table_id=f.table_id;i.group_id=f.group_id;i.latest_version=f.latest_complete_version;
+  auto vit=f.versions.find(f.latest_complete_version);
+  if(vit!=f.versions.end()){i.total_size=vit->second.total_size;i.state=(vit->second.state==VersionState::DELETED)?FileState::DELETED:FileState::ACTIVE;}
+  r.push_back(i);}
  return r;
 }
 EngineServer::SR EngineServer::cancel_session(uint64_t sid){auto* s=engine_->get_session(sid);if(!s)return{false,"not found"};return{true,""};}

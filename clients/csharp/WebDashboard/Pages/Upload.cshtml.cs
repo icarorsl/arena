@@ -21,6 +21,7 @@ public class UploadModel : PageModel
     public bool Done { get; set; }
     public ulong UploadedFileId { get; set; }
     public uint UploadedVersion { get; set; }
+    public long UploadedSize { get; set; }
     public string? Error { get; set; }
 
     public UploadModel(Engine.EngineClient client) => _client = client;
@@ -79,6 +80,7 @@ public class UploadModel : PageModel
             Done = true;
             UploadedFileId = complete.LogicalFileId;
             UploadedVersion = complete.VersionNumber;
+            UploadedSize = UploadedFile.Length;
         }
         catch (Exception ex)
         {

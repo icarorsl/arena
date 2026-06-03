@@ -15,11 +15,17 @@
 
 @if (Model.Done)
 {
-    <div class="status" style="border-color:var(--ok);margin-bottom:1rem;">
-        <p style="color:var(--ok);">
-            Uploaded! File <strong>#@Model.UploadedFileId</strong>, version <strong>@Model.UploadedVersion</strong>.
-            <a href="/File/@Model.UploadedFileId">View file →</a>
+    <div class="status" style="border-color:var(--ok);margin-bottom:1.5rem;text-align:center;">
+        <p style="color:var(--ok);font-size:1.1rem;margin-bottom:.75rem;">
+            ✅ Upload complete
         </p>
+        <p style="color:var(--muted);margin-bottom:1rem;">
+            File <strong>#@Model.UploadedFileId</strong>, version <strong>@Model.UploadedVersion</strong>, @FormatSize((ulong)Model.UploadedSize)
+        </p>
+        <div class="actions">
+            <a href="/File/@Model.UploadedFileId" class="btn" style="border-color:var(--accent);">View file</a>
+            <a href="/Files" class="btn" style="border-color:var(--ok);">OK</a>
+        </div>
     </div>
 }
 
@@ -47,3 +53,15 @@
         </button>
     </div>
 </form>
+
+@functions {
+    static string FormatSize(ulong bytes)
+    {
+        if (bytes == 0) return "—";
+        string[] suf = { "B", "KB", "MB", "GB" };
+        int i = 0;
+        double d = bytes;
+        while (d >= 1024 && i < suf.Length - 1) { d /= 1024; i++; }
+        return d.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " " + suf[i];
+    }
+}

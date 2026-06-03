@@ -128,6 +128,8 @@ public:
         f->set_group_id(result.group_id);
         f->set_latest_version(result.latest_version);
         f->set_state(static_cast<filegroup::engine::FileState>(result.state));
+        f->set_total_size(result.total_size);
+        f->set_created_at_us(result.created_at_us);
         return Status::OK;
     }
 
@@ -144,6 +146,8 @@ public:
             fi->set_group_id(f.group_id);
             fi->set_latest_version(f.latest_version);
             fi->set_state(static_cast<filegroup::engine::FileState>(f.state));
+            fi->set_total_size(f.total_size);
+            fi->set_created_at_us(f.created_at_us);
         }
         return Status::OK;
     }
