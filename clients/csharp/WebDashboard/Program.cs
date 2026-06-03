@@ -8,7 +8,11 @@ builder.Services.AddRazorPages();
 var engineAddress = builder.Configuration.GetValue<string>("Engine:Address") ?? "http://localhost:8443";
 builder.Services.AddSingleton(sp =>
 {
-    var channel = GrpcChannel.ForAddress(engineAddress);
+    var channel = GrpcChannel.ForAddress(engineAddress, new GrpcChannelOptions
+    {
+        MaxReceiveMessageSize = 256 * 1024 * 1024, // 256 MB
+        MaxSendMessageSize = 256 * 1024 * 1024
+    });
     return new Engine.EngineClient(channel);
 });
 

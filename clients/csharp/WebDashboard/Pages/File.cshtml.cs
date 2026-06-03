@@ -115,8 +115,11 @@ public class FileModel : PageModel
         {
             return new EmptyResult(); // client disconnected — ok
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine($"[download] lid={id} v={version}: {ex.GetType().Name}: {ex.Message}");
+            if (ex.InnerException != null)
+                Console.Error.WriteLine($"[download] inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             return NotFound();
         }
     }
