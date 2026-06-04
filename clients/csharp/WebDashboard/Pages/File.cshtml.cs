@@ -94,69 +94,71 @@ public class FileModel : PageModel
     {
         try
         {
-            // Get file info for size and chunk count
-            var info = await _client.GetFileInfoAsync(new GetFileInfoRequest { LogicalFileId = (ulong)id });
-            if (info?.File == null) return NotFound();
-            var totalSize = (long)info.File.TotalSize;
-
-            Response.ContentType = "application/octet-stream";
-            Response.Headers["Accept-Ranges"] = "bytes";
-
-            // Parse Range header for seeking
-            long start = 0, end = totalSize - 1;
-            var rangeHeader = Request.Headers.Range.ToString();
-            if (!string.IsNullOrEmpty(rangeHeader) && rangeHeader.StartsWith("bytes="))
-            {
-                var range = rangeHeader[6..].Split('-');
-                start = long.TryParse(range[0], out var s) ? s : 0;
-                end = range.Length > 1 && long.TryParse(range[1], out var e) ? Math.Min(e, totalSize - 1) : totalSize - 1;
-                Response.StatusCode = 206;
-                Response.Headers["Content-Range"] = $"bytes {start}-{end}/{totalSize}";
-            }
-
-            // Calculate which chunks to read
-            var chunkSize = (long)(info.LatestVersion != null && info.LatestVersion.ChunkCount > 0
-                ? info.File.TotalSize / info.LatestVersion.ChunkCount
-                : 65536);
-            if (chunkSize == 0) chunkSize = 65536;
-            var firstChunk = (uint)(start / chunkSize);
-            var lastChunk = (uint)(end / chunkSize);
-
             using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
 
-            uint chunkIdx = 0;
-            long bytesWritten = 0;
-            var totalRange = end - start + 1;
-
+            // Buffer all chunks
+            using var ms = new MemoryStream();
             while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
             {
                 var resp = call.ResponseStream.Current;
-                if (resp.IsLastChunk && resp.Data.IsEmpty) break;
                 if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
-
-                var data = resp.Data;
-                if (chunkIdx >= firstChunk && chunkIdx <= lastChunk)
-                {
-                    var chunkStart = (long)chunkIdx * chunkSize;
-                    var offset = start > chunkStart ? (int)(start - chunkStart) : 0;
-                    var len = (int)Math.Min(data.Length - offset, totalRange - bytesWritten);
-                    if (len > 0 && offset < data.Length)
-                    {
-                        await Response.Body.WriteAsync(data.Memory.Slice(offset, len), HttpContext.RequestAborted);
-                        bytesWritten += len;
-                    }
-                }
-                chunkIdx++;
-                if (bytesWritten >= totalRange) break;
+                ms.Write(resp.Data.Span);
             }
 
-            return new EmptyResult();
+            var data = ms.ToArray();
+            if (data.Length == 0) return NotFound();
+
+            // MIME + Range — same as before streaming
+            Response.ContentType = DetectMimeType(data);
+            Response.Headers["Accept-Ranges"] = "bytes";
+
+            long start = 0, end = data.Length - 1;
+            var rh = Request.Headers.Range.ToString();
+            if (!string.IsNullOrEmpty(rh) && rh.StartsWith("bytes="))
+            {
+                var p = rh[6..].Split('-');
+                start = long.TryParse(p[0], out var s) ? s : 0;
+                end = p.Length > 1 && long.TryParse(p[1], out var e) ? Math.Min(e, data.Length - 1) : data.Length - 1;
+                Response.StatusCode = 206;
+                Response.Headers["Content-Range"] = $"bytes {start}-{end}/{data.Length}";
+            }
+
+            await Response.Body.WriteAsync(data.AsMemory((int)start, (int)(end - start + 1)));
         }
-        catch (OperationCanceledException) { return new EmptyResult(); }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[download] lid={id} v={version}: {ex.GetType().Name}: {ex.Message}");
-            return NotFound();
-        }
+        catch (OperationCanceledException) { }
+        return new EmptyResult();
+    }
+
+    private static string DetectMimeType(ReadOnlySpan<byte> data)
+    {
+        // WebM: \x1a\x45\xdf\xa3
+        if (data.Length >= 4 && data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3)
+            return "video/webm";
+        // MP4/MOV: ftyp at offset 4
+        if (data.Length >= 12 && data[4] == 'f' && data[5] == 't' && data[6] == 'y' && data[7] == 'p')
+            return "video/mp4";
+        // AVI: RIFF....AVI
+        if (data.Length >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+            && data[8] == 'A' && data[9] == 'V' && data[10] == 'I')
+            return "video/avi";
+        // QuickTime MOV
+        if (data.Length >= 8 && data[4] == 'm' && data[5] == 'o' && data[6] == 'o' && data[7] == 'v')
+            return "video/quicktime";
+        // Matroska MKV
+        if (data.Length >= 4 && data[0] == 0x1A && data[1] == 0x45 && data[2] == 0xDF && data[3] == 0xA3)
+            return "video/x-matroska";
+        // JPEG
+        if (data.Length >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF)
+            return "image/jpeg";
+        // PNG
+        if (data.Length >= 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G')
+            return "image/png";
+        // GIF
+        if (data.Length >= 4 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8')
+            return "image/gif";
+        // PDF
+        if (data.Length >= 4 && data[0] == '%' && data[1] == 'P' && data[2] == 'D' && data[3] == 'F')
+            return "application/pdf";
+        return "application/octet-stream";
     }
 }

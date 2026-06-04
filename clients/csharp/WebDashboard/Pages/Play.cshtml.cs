@@ -28,10 +28,7 @@ public class PlayModel : PageModel
             if (version > 0)
                 vi = vers.Versions.FirstOrDefault(v => v.VersionNumber == version);
             else
-                vi = vers.Versions
-                    .Where(v => v.State == Filegroup.Engine.VersionState.VersionComplete)
-                    .OrderByDescending(v => v.VersionNumber)
-                    .FirstOrDefault();
+                vi = vers.Versions.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
 
             VersionNumber = vi?.VersionNumber ?? 0;
             VersionState = vi?.State.ToString();

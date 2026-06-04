@@ -252,14 +252,9 @@ public:
                 filegroup::engine::ReadFileResponse chunk;
                 chunk.set_data(data, size);
                 chunk.set_chunk_index(ci++);
-                chunk.set_is_last_chunk(false);
                 writer->Write(chunk);
             });
-        if (ok) {
-            filegroup::engine::ReadFileResponse last;
-            last.set_is_last_chunk(true);
-            writer->Write(last);
-        } else {
+        if (!ok) {
             filegroup::engine::ReadFileResponse err;
             err.set_error("not found");
             writer->Write(err);
