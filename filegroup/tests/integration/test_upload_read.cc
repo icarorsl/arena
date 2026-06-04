@@ -136,8 +136,12 @@ TEST_F(MaxVersionsIntegrationTest, MarkedDeletedRemovedBeforeComplete) {
     EXPECT_EQ(complete_count, 2) << "Should have 2 COMPLETE versions";
 }
 
-// max_versions=1 → v1 deleted when v2 completes
+// max_versions=1: v1 auto-deleted when v2 completes
 TEST_F(MaxVersionsIntegrationTest, MaxOneKeepsOnlyNewest) {
+    // Destroy old server + data, create fresh with max_versions=1
+    server_.reset();
+    system(("rm -rf " + data_dir_.substr(0, data_dir_.size() - 1)).c_str());
+    data_dir_ = make_temp_dir();
     config_.groups[0].max_versions = 1;
     config_.tables[0].max_versions = 1;
     server_ = std::make_unique<EngineServer>(config_, nullptr, data_dir_);
