@@ -1,8 +1,19 @@
 using Filegroup.Engine;
 using Grpc.Net.Client;
+using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
+
+// Allow large file uploads (up to 4 GB)
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = null; // unlimited
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 4L * 1024 * 1024 * 1024; // 4 GB
+});
 
 // Register gRPC client — connect to engine (Docker or native)
 var engineAddress = builder.Configuration.GetValue<string>("Engine:Address") ?? "http://localhost:8443";

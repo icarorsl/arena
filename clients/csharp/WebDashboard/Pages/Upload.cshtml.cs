@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 namespace WebDashboard.Pages;
 
 [IgnoreAntiforgeryToken]
+[RequestSizeLimit(long.MaxValue)]
 public class UploadModel : PageModel
 {
     private readonly Engine.EngineClient _client;
