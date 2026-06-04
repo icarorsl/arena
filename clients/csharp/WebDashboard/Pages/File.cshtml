@@ -96,8 +96,11 @@
                     <td class="mono">@(v.ExpiresAtUs == 0 ? "never" : FormatTimestamp(v.ExpiresAtUs))</td>
                     <td class="mono" style="font-size:.8rem;">@FormatTimestamp(v.CreatedAtUs)</td>
                     <td>
-                        <a href="/Play/@RouteData.Values["id"]?version=@v.VersionNumber" class="btn" style="color:var(--ok);border-color:var(--ok);cursor:pointer;font-size:.75rem;padding:.2rem .5rem;text-decoration:none;" title="Play v@(v.VersionNumber)">▶</a>
-                        @if (v.State != Filegroup.Engine.VersionState.VersionDeleted && v.State != Filegroup.Engine.VersionState.VersionMarkedDeleted)
+                        @if (v.State != Filegroup.Engine.VersionState.VersionUploading)
+                        {
+                            <a href="/Play/@RouteData.Values["id"]?version=@v.VersionNumber" class="btn" style="color:var(--ok);border-color:var(--ok);cursor:pointer;font-size:.75rem;padding:.2rem .5rem;text-decoration:none;" title="Play v@(v.VersionNumber)">▶</a>
+                        }
+                        @if (v.State != Filegroup.Engine.VersionState.VersionDeleted && v.State != Filegroup.Engine.VersionState.VersionMarkedDeleted && v.State != Filegroup.Engine.VersionState.VersionUploading)
                         {
                             <form method="post" asp-page-handler="DeleteVersion" asp-route-id="@RouteData.Values["id"]" asp-route-version="@v.VersionNumber" onsubmit="return confirm('Delete version @v.VersionNumber?')" style="margin:0;display:inline;">
                                 @Html.AntiForgeryToken()

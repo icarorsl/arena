@@ -152,7 +152,9 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
   }
   bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}
   if(!ok){
-   std::cerr << "[read_file] lid=" << lid << " chunk " << ci << " fetch failed: " << l.sf << " off=" << l.off << " sz=" << l.sz << std::endl;
+   std::string err;
+   for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);err=f.error;break;}
+   std::cerr << "[read_file] lid=" << lid << " chunk " << ci << " fetch failed: " << l.sf << " off=" << l.off << " sz=" << l.sz << " err=" << err << std::endl;
    return{};
   }
  }
@@ -160,6 +162,27 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  return r;
 }
 std::vector<uint8_t> Engine::read_chunk(uint64_t lid,uint32_t v,uint32_t ci){auto d=read_file(lid,v);return d;}
+
+bool Engine::read_single_chunk(uint64_t lid,uint32_t v,uint32_t ci,std::vector<uint8_t>& out){
+ const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return false;
+ if(ci>=ve->chunk_count)return false;
+ ChunkLoc l;
+ {std::lock_guard<std::mutex>lk(chunks_mutex_);
+  auto fit=chunk_locs_.find(ve->file_id);
+  if(fit!=chunk_locs_.end()){auto cit=fit->second.find(ci);if(cit!=fit->second.end())l=cit->second;}
+ }
+ if(l.sf.empty()&&ci<ve->chunks.size()&&!ve->chunks[ci].replicas.empty()){
+  auto& rep=ve->chunks[ci].replicas[0];
+  l.sf=rep.segment_file;l.off=rep.offset;l.sz=ve->chunks[ci].chunk_size_actual;
+ }
+ if(l.sf.empty())return false;
+ for(auto* n:storage_nodes_){
+  auto f=n->fetch_chunk(l.sf,l.off,l.sz);
+  if(f.success){out=std::move(f.data);return true;}
+ }
+ return false;
+}
 const UploadSession* Engine::get_session(uint64_t sid)const{std::lock_guard<std::mutex>lk(sessions_mutex_);auto it=sessions_.find(sid);return it!=sessions_.end()?&it->second:nullptr;}
 void Engine::update_chunk_location(uint64_t fid,uint32_t ci,const std::string& sf,uint64_t off,uint64_t sz){
  std::lock_guard<std::mutex> lk(chunks_mutex_);

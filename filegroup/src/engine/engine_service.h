@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +27,8 @@ public:
     RR resume_session(uint64_t sid);
     struct RFR { std::vector<uint8_t> data; std::string error; };
     RFR read_file(uint64_t lid,uint32_t vn=0);
+    // Streaming read: calls callback for each chunk. Returns true on success.
+    bool read_file_stream(uint64_t lid, uint32_t vn, std::function<void(const uint8_t*,size_t)> callback);
     struct RCR { std::vector<uint8_t> data; std::string error; };
     RCR read_chunk(uint64_t lid,uint32_t vn,uint32_t ci);
     struct SR { bool success=false; std::string error; };

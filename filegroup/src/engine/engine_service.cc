@@ -60,6 +60,18 @@ EngineServer::RFR EngineServer::read_file(uint64_t lid,uint32_t vn){RFR r;
  if(r.data.empty())r.error="not found";
  else if(metrics_){metrics_->inc_counter("file_read_total");metrics_->observe_chunk_read_latency_ms((now_us()-t0)/1000.0);}
  return r;}
+
+bool EngineServer::read_file_stream(uint64_t lid,uint32_t vn,
+    std::function<void(const uint8_t*,size_t)> callback){
+ const VersionEntry* ve=vn>0?rc_->get_version(lid,vn):rc_->get_latest_complete(lid);
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return false;
+ for(uint32_t ci=0;ci<ve->chunk_count;ci++){
+  std::vector<uint8_t> chunk;
+  if(!engine_->read_single_chunk(lid,vn,ci,chunk))return false;
+  callback(chunk.data(),chunk.size());
+ }
+ return true;
+}
 EngineServer::RCR EngineServer::read_chunk(uint64_t lid,uint32_t vn,uint32_t ci){RCR r;r.data=engine_->read_chunk(lid,vn,ci);if(r.data.empty())r.error="not found";return r;}
 EngineServer::SR EngineServer::delete_file(uint64_t lid){
  auto* f=rc_->get_file(lid);

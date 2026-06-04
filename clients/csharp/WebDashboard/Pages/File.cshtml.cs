@@ -94,32 +94,68 @@ public class FileModel : PageModel
     {
         try
         {
-            using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
+            // Get file info for size and chunk count
+            var info = await _client.GetFileInfoAsync(new GetFileInfoRequest { LogicalFileId = (ulong)id });
+            if (info?.File == null) return NotFound();
+            var totalSize = (long)info.File.TotalSize;
 
             Response.ContentType = "application/octet-stream";
             Response.Headers["Accept-Ranges"] = "bytes";
 
-            // Stream bytes directly: gRPC → HTTP, no buffering
-            var total = 0L;
+            // Parse Range header for seeking
+            long start = 0, end = totalSize - 1;
+            var rangeHeader = Request.Headers.Range.ToString();
+            if (!string.IsNullOrEmpty(rangeHeader) && rangeHeader.StartsWith("bytes="))
+            {
+                var range = rangeHeader[6..].Split('-');
+                start = long.TryParse(range[0], out var s) ? s : 0;
+                end = range.Length > 1 && long.TryParse(range[1], out var e) ? Math.Min(e, totalSize - 1) : totalSize - 1;
+                Response.StatusCode = 206;
+                Response.Headers["Content-Range"] = $"bytes {start}-{end}/{totalSize}";
+            }
+
+            // Calculate which chunks to read
+            var chunkSize = (long)(info.LatestVersion != null && info.LatestVersion.ChunkCount > 0
+                ? info.File.TotalSize / info.LatestVersion.ChunkCount
+                : 65536);
+            if (chunkSize == 0) chunkSize = 65536;
+            var firstChunk = (uint)(start / chunkSize);
+            var lastChunk = (uint)(end / chunkSize);
+
+            using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
+
+            uint chunkIdx = 0;
+            long bytesWritten = 0;
+            var totalRange = end - start + 1;
+
             while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
             {
-                var chunk = call.ResponseStream.Current.Data;
-                await Response.Body.WriteAsync(chunk.Memory, HttpContext.RequestAborted);
-                await Response.Body.FlushAsync(HttpContext.RequestAborted);
-                total += chunk.Length;
+                var resp = call.ResponseStream.Current;
+                if (resp.IsLastChunk && resp.Data.IsEmpty) break;
+                if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
+
+                var data = resp.Data;
+                if (chunkIdx >= firstChunk && chunkIdx <= lastChunk)
+                {
+                    var chunkStart = (long)chunkIdx * chunkSize;
+                    var offset = start > chunkStart ? (int)(start - chunkStart) : 0;
+                    var len = (int)Math.Min(data.Length - offset, totalRange - bytesWritten);
+                    if (len > 0 && offset < data.Length)
+                    {
+                        await Response.Body.WriteAsync(data.Memory.Slice(offset, len), HttpContext.RequestAborted);
+                        bytesWritten += len;
+                    }
+                }
+                chunkIdx++;
+                if (bytesWritten >= totalRange) break;
             }
 
             return new EmptyResult();
         }
-        catch (OperationCanceledException)
-        {
-            return new EmptyResult(); // client disconnected — ok
-        }
+        catch (OperationCanceledException) { return new EmptyResult(); }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[download] lid={id} v={version}: {ex.GetType().Name}: {ex.Message}");
-            if (ex.InnerException != null)
-                Console.Error.WriteLine($"[download] inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
             return NotFound();
         }
     }

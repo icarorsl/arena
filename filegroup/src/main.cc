@@ -246,16 +246,23 @@ public:
                            grpc::ServerWriter<filegroup::engine::ReadFileResponse>* writer) override
     {
         (void)ctx;
-        auto result = server_.read_file(req->logical_file_id(), req->version_number());
-        if (!result.data.empty()) {
-            filegroup::engine::ReadFileResponse chunk;
-            chunk.set_data(result.data.data(), result.data.size());
-            chunk.set_is_last_chunk(true);
-            writer->Write(chunk);
-        } else if (!result.error.empty()) {
-            filegroup::engine::ReadFileResponse chunk;
-            chunk.set_error(result.error);
-            writer->Write(chunk);
+        uint32_t ci = 0;
+        bool ok = server_.read_file_stream(req->logical_file_id(), req->version_number(),
+            [&](const uint8_t* data, size_t size) {
+                filegroup::engine::ReadFileResponse chunk;
+                chunk.set_data(data, size);
+                chunk.set_chunk_index(ci++);
+                chunk.set_is_last_chunk(false);
+                writer->Write(chunk);
+            });
+        if (ok) {
+            filegroup::engine::ReadFileResponse last;
+            last.set_is_last_chunk(true);
+            writer->Write(last);
+        } else {
+            filegroup::engine::ReadFileResponse err;
+            err.set_error("not found");
+            writer->Write(err);
         }
         return Status::OK;
     }

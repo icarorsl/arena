@@ -26,6 +26,8 @@ public:
     std::vector<uint32_t> resume_session(uint64_t session_id);
     std::vector<uint8_t> read_file(uint64_t logical_file_id, uint32_t version=0);
     std::vector<uint8_t> read_chunk(uint64_t logical_file_id, uint32_t version, uint32_t chunk_index);
+    bool read_single_chunk(uint64_t logical_file_id, uint32_t version, uint32_t chunk_index,
+                           std::vector<uint8_t>& out);
     const ClusterConfig& config() const { return config_; }
     const UploadSession* get_session(uint64_t session_id) const;
 
