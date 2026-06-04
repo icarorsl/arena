@@ -150,10 +150,11 @@ uint32_t CompactionService::run_once() {
                         if (it != phys_to_logical.end()) {
                             bool has_live = false;
                             for (auto& [vn, ver] : it->second->versions) {
-                                if (ver.state == VersionState::COMPLETE ||
-                                    ver.state == VersionState::SUPERSEDED ||
-                                    ver.state == VersionState::MARKED_DELETED ||
-                                    ver.state == VersionState::UPLOADING) {
+                                if (ver.file_id == ceh.file_id &&
+                                    (ver.state == VersionState::COMPLETE ||
+                                     ver.state == VersionState::SUPERSEDED ||
+                                     ver.state == VersionState::MARKED_DELETED ||
+                                     ver.state == VersionState::UPLOADING)) {
                                     has_live = true;
                                     break;
                                 }

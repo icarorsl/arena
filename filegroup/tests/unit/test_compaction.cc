@@ -21,12 +21,13 @@ namespace {
 struct CompactionLogic {
     std::set<uint64_t> live_file_ids;
     std::unordered_map<uint64_t, const LogicalFileEntry*> phys_to_logical;
+    std::vector<LogicalFileEntry> all_files_cache;  // keep alive for pointer stability
 
     void build_from(FileIndex& index) {
         live_file_ids.clear();
         phys_to_logical.clear();
-        auto all_files = index.all_files();
-        for (const auto& f : all_files) {
+        all_files_cache = index.all_files();  // copy — pointers from here are stable
+        for (const auto& f : all_files_cache) {
             for (const auto& [vn, ver] : f.versions) {
                 if (ver.state == VersionState::COMPLETE ||
                     ver.state == VersionState::SUPERSEDED ||
@@ -47,10 +48,11 @@ struct CompactionLogic {
         auto it = phys_to_logical.find(file_id);
         if (it != phys_to_logical.end()) {
             for (auto& [vn, ver] : it->second->versions) {
-                if (ver.state == VersionState::COMPLETE ||
-                    ver.state == VersionState::SUPERSEDED ||
-                    ver.state == VersionState::MARKED_DELETED ||
-                    ver.state == VersionState::UPLOADING) {
+                if (ver.file_id == file_id &&
+                    (ver.state == VersionState::COMPLETE ||
+                     ver.state == VersionState::SUPERSEDED ||
+                     ver.state == VersionState::MARKED_DELETED ||
+                     ver.state == VersionState::UPLOADING)) {
                     return true;
                 }
             }
@@ -142,9 +144,36 @@ TEST_F(CompactionLogicTest, MarkedDeletedVersionChunksAreLive) {
 }
 
 // NOTE: FileIndex::apply_session_timed_out currently only removes the session
-// from sessions_ map, it does NOT change VersionEntry.state from UPLOADING
-// to SESSION_TIMED_OUT. This is tracked as a separate issue.
-// Until fixed, timed-out session chunks will incorrectly survive compaction.
+// Timed-out session: version state changed → chunks deleted
+TEST_F(CompactionLogicTest, SessionTimedOutChunksAreDead) {
+    register_version(500, 50, 1, 1, 1, VersionState::UPLOADING);
+    SessionTimedOutEntry sto{};
+    sto.session_id = 50 * 10;
+    sto.file_id = 50;
+    index.apply_session_timed_out(sto);
+    CompactionLogic logic;
+    logic.build_from(index);
+    EXPECT_FALSE(logic.live_file_ids.count(50) > 0)
+        << "file_id must NOT be in live_file_ids after timeout";
+    EXPECT_FALSE(logic.should_keep(false, 50))
+        << "Timed-out session chunks must be deleted";
+}
+
+// Mixed: one UPLOADING, one timed out — only UPLOADING survives
+TEST_F(CompactionLogicTest, LiveUploadingVsTimedOut) {
+    register_version(900, 90, 1, 1, 1, VersionState::UPLOADING);
+    register_version(900, 91, 2, 1, 1, VersionState::UPLOADING);
+    SessionTimedOutEntry sto{};
+    sto.session_id = 91 * 10;
+    sto.file_id = 91;
+    index.apply_session_timed_out(sto);
+    CompactionLogic logic;
+    logic.build_from(index);
+    EXPECT_TRUE(logic.should_keep(false, 90))
+        << "UPLOADING chunks must survive";
+    EXPECT_FALSE(logic.should_keep(false, 91))
+        << "SESSION_TIMED_OUT chunks must be deleted";
+}
 
 // Unregistered file_id: chunks never belonged to any file → dead
 TEST_F(CompactionLogicTest, UnregisteredFileIdIsDead) {
@@ -179,15 +208,6 @@ TEST_F(CompactionLogicTest, ReverseMapFallbackWorks) {
     logic.build_from(index);
     EXPECT_TRUE(logic.phys_to_logical.count(80) > 0);
     EXPECT_TRUE(logic.should_keep(false, 80));
-}
-
-// Live UPLOADING vs orphaned file_id
-TEST_F(CompactionLogicTest, LiveUploadingVsOrphanedFileId) {
-    register_version(900, 90, 1, 1, 1, VersionState::UPLOADING);
-    CompactionLogic logic;
-    logic.build_from(index);
-    EXPECT_TRUE(logic.should_keep(false, 90));
-    EXPECT_FALSE(logic.should_keep(false, 91));
 }
 
 }  // namespace

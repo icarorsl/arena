@@ -168,7 +168,21 @@ void FileIndex::apply_session_timed_out(const SessionTimedOutEntry& e) {
     auto sit = sessions_.find(e.session_id);
     if (sit == sessions_.end()) return;
     
+    uint64_t logical_file_id = sit->second;
     sessions_.erase(sit);
+
+    // Update version state so compaction can reclaim its chunks
+    auto fit = files_.find(logical_file_id);
+    if (fit != files_.end()) {
+        auto vit = fit->second.versions.begin();
+        while (vit != fit->second.versions.end()) {
+            if (vit->second.file_id == e.file_id && vit->second.state == VersionState::UPLOADING) {
+                vit->second.state = VersionState::SESSION_TIMED_OUT;
+                break;
+            }
+            ++vit;
+        }
+    }
 }
 
 void FileIndex::apply_chunk_delete_confirmed(const ChunkDeleteConfirmedEntry& e) {
