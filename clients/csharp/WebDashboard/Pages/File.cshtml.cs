@@ -96,34 +96,53 @@ public class FileModel : PageModel
         {
             using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
 
-            // Buffer all chunks
-            using var ms = new MemoryStream();
-            while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
+            bool isRange = Request.Headers.Range.ToString().StartsWith("bytes=");
+
+            if (isRange)
             {
-                var resp = call.ResponseStream.Current;
-                if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
-                ms.Write(resp.Data.Span);
-            }
+                // Buffer everything for Range — need full data to calculate response
+                using var ms = new MemoryStream();
+                while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
+                {
+                    var resp = call.ResponseStream.Current;
+                    if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
+                    ms.Write(resp.Data.Span);
+                }
+                var data = ms.ToArray();
+                if (data.Length == 0) return NotFound();
 
-            var data = ms.ToArray();
-            if (data.Length == 0) return NotFound();
+                Response.ContentType = DetectMimeType(data);
+                Response.Headers["Accept-Ranges"] = "bytes";
 
-            // MIME + Range — same as before streaming
-            Response.ContentType = DetectMimeType(data);
-            Response.Headers["Accept-Ranges"] = "bytes";
-
-            long start = 0, end = data.Length - 1;
-            var rh = Request.Headers.Range.ToString();
-            if (!string.IsNullOrEmpty(rh) && rh.StartsWith("bytes="))
-            {
+                var rh = Request.Headers.Range.ToString();
                 var p = rh[6..].Split('-');
-                start = long.TryParse(p[0], out var s) ? s : 0;
-                end = p.Length > 1 && long.TryParse(p[1], out var e) ? Math.Min(e, data.Length - 1) : data.Length - 1;
+                long start = long.TryParse(p[0], out var s) ? s : 0;
+                long end = p.Length > 1 && long.TryParse(p[1], out var e) ? Math.Min(e, data.Length - 1) : data.Length - 1;
                 Response.StatusCode = 206;
                 Response.Headers["Content-Range"] = $"bytes {start}-{end}/{data.Length}";
-            }
 
-            await Response.Body.WriteAsync(data.AsMemory((int)start, (int)(end - start + 1)));
+                await Response.Body.WriteAsync(data.AsMemory((int)start, (int)(end - start + 1)));
+            }
+            else
+            {
+                // Stream immediately — set MIME from first chunk, flush rest
+                var contentTypeSet = false;
+                while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
+                {
+                    var resp = call.ResponseStream.Current;
+                    if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
+
+                    if (!contentTypeSet && resp.Data.Length >= 12)
+                    {
+                        Response.ContentType = DetectMimeType(resp.Data.Span);
+                        Response.Headers["Accept-Ranges"] = "bytes";
+                        contentTypeSet = true;
+                    }
+
+                    await Response.Body.WriteAsync(resp.Data.Memory, HttpContext.RequestAborted);
+                    await Response.Body.FlushAsync(HttpContext.RequestAborted);
+                }
+            }
         }
         catch (OperationCanceledException) { }
         return new EmptyResult();
