@@ -29,7 +29,6 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto mv=resolve_max_versions(*grp,tbl);
- std::cerr << "[engine] open_session lid=" << lid << " tid=" << tid << " resolved_max_versions=" << mv << " (group=" << grp->max_versions << " table=" << (tbl?tbl->max_versions:0) << ")" << std::endl;
  // If adding a new version to an existing file, check max_versions cap
  if(lid && mv>0){
   auto* ef=registry_->get_file(lid);
@@ -44,7 +43,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  uint32_t vn=1;
  if(lid){
   auto* ef=registry_->get_file(lid);
-  if(ef) vn=ef->next_version_number;
+  if(ef) vn = (uint32_t)ef->versions.size() + 1;
  }
  std::vector<uint16_t> hn; for(uint16_t i=1;i<=storage_nodes_.size();i++)hn.push_back(i);
  uint32_t cc=ec; if(cc==0&&ts>0)cc=(uint32_t)((ts+cs-1)/cs);
@@ -90,7 +89,6 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs,std::string* note){
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
  // Enforce max_versions: count all non-DELETED versions; delete worst-state first
  if(s->resolved_max_versions>0){
-  std::cerr << "[engine] enforcing max_versions=" << (int)s->resolved_max_versions << " for lid=" << s->logical_file_id << std::endl;
   auto* f=registry_->get_file(s->logical_file_id);
   if(f){
    // Collect versions: COMPLETE + MARKED_DELETED (DELETED don't count — already gone)

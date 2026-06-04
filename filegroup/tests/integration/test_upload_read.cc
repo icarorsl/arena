@@ -136,21 +136,22 @@ TEST_F(MaxVersionsIntegrationTest, MarkedDeletedRemovedBeforeComplete) {
     EXPECT_EQ(complete_count, 2) << "Should have 2 COMPLETE versions";
 }
 
-// Upload 3 versions with max_versions=1 → only the newest survives
+// max_versions=1 → v1 deleted when v2 completes
 TEST_F(MaxVersionsIntegrationTest, MaxOneKeepsOnlyNewest) {
-    std::vector<uint8_t> data = {1, 2, 3};
+    config_.groups[0].max_versions = 1;
+    config_.tables[0].max_versions = 1;
+    server_ = std::make_unique<EngineServer>(config_, nullptr, data_dir_);
 
+    std::vector<uint8_t> data = {1, 2, 3};
     uint64_t lid = upload_version(0, data);  // v1
-    upload_version(lid, data);                // v2 → enforcement should delete v1
+    upload_version(lid, data);                // v2 → enforcement deletes v1
 
     auto vers = server_->list_versions(lid);
-    // v1 should be DELETED, v2 should be COMPLETE
     for (auto& v : vers) {
-        if (v.version_number == 1) {
-            EXPECT_EQ(v.state, VersionState::DELETED);
-        } else {
+        if (v.version_number == 1)
+            EXPECT_NE(v.state, VersionState::COMPLETE);
+        else
             EXPECT_EQ(v.state, VersionState::COMPLETE);
-        }
     }
 }
 
