@@ -29,6 +29,7 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
  auto cs=resolve_chunk_size(*grp,tbl,0); auto rf=resolve_replication_factor(*grp,tbl,0);
  auto ea=resolve_expires_at(*grp,tbl,fed,now_us()); auto enc=resolve_encryption(*grp,tbl);
  auto mv=resolve_max_versions(*grp,tbl);
+ std::cerr << "[engine] open_session lid=" << lid << " tid=" << tid << " resolved_max_versions=" << mv << " (group=" << grp->max_versions << " table=" << (tbl?tbl->max_versions:0) << ")" << std::endl;
  // If adding a new version to an existing file, check max_versions cap
  if(lid && mv>0){
   auto* ef=registry_->get_file(lid);
@@ -89,24 +90,32 @@ bool Engine::complete_session(uint64_t sid,uint32_t cs,std::string* note){
  {std::lock_guard<std::mutex> lk(sessions_mutex_);s->state=VersionState::COMPLETE;}
  // Enforce max_versions: count all non-DELETED versions; delete worst-state first
  if(s->resolved_max_versions>0){
+  std::cerr << "[engine] enforcing max_versions=" << (int)s->resolved_max_versions << " for lid=" << s->logical_file_id << std::endl;
   auto* f=registry_->get_file(s->logical_file_id);
   if(f){
    // Collect versions: COMPLETE + MARKED_DELETED (DELETED don't count — already gone)
+   // Always include the just-completed version even if not yet visible in the registry
    std::vector<std::pair<uint32_t,int>> ranked; // (version_number, priority)
+   bool seen_new = false;
    for(auto&[vn,ver]:f->versions){
+    if(vn == s->version_number) seen_new = true;
     if(ver.state==VersionState::COMPLETE) ranked.push_back({vn,2});
     else if(ver.state==VersionState::MARKED_DELETED) ranked.push_back({vn,1});
     // DELETED (priority 0) not counted — already reclaimed
    }
+   if(!seen_new) ranked.push_back({s->version_number, 2});
    std::sort(ranked.begin(),ranked.end(),[](auto& a,auto& b){
     if(a.second!=b.second) return a.second<b.second; // lowest priority first
     return a.first<b.first; // oldest first within same priority
    });
    while(ranked.size()>s->resolved_max_versions){
     auto [oldest_vn,prio]=ranked.front();
-    VersionDeletedEntry vd;vd.file_id=f->versions.at(oldest_vn).file_id;vd.logical_file_id=s->logical_file_id;vd.version_number=oldest_vn;
+    VersionDeletedEntry vd;vd.file_id=0;vd.logical_file_id=s->logical_file_id;vd.version_number=oldest_vn;
+    // Get file_id from the version — use f->versions if available, fallback to session
+    auto vit = f->versions.find(oldest_vn);
+    vd.file_id = (vit != f->versions.end()) ? vit->second.file_id : 0;
     registry_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&vd,sizeof(vd));
-    MaxVersionsEnforcedEntry mv;mv.logical_file_id=s->logical_file_id;mv.deleted_version_number=oldest_vn;mv.deleted_file_id=f->versions.at(oldest_vn).file_id;
+    MaxVersionsEnforcedEntry mv;mv.logical_file_id=s->logical_file_id;mv.deleted_version_number=oldest_vn;mv.deleted_file_id=vd.file_id;
     registry_->append_entry((uint32_t)ManifestEntryType::MAX_VERSIONS_ENFORCED,&mv,sizeof(mv));
     std::cout << "[engine] max_versions: deleted v" << oldest_vn << " (prio="<<prio<<") of file " << s->logical_file_id << "\n";
     if(note) *note = "Auto-deleted v" + std::to_string(oldest_vn) + " (max_versions=" + std::to_string(s->resolved_max_versions) + ")";

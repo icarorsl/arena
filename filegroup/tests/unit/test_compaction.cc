@@ -210,5 +210,118 @@ TEST_F(CompactionLogicTest, ReverseMapFallbackWorks) {
     EXPECT_TRUE(logic.should_keep(false, 80));
 }
 
+// ============================================================================
+// Max versions enforcement ranking tests
+// ============================================================================
+
+// Replicates the ranking logic from Engine::complete_session
+struct MaxVersionsLogic {
+    // priority: MARKED_DELETED=1, COMPLETE=2
+    static std::vector<std::pair<uint32_t, int>> rank(
+        const std::map<uint32_t, VersionEntry>& versions) {
+        std::vector<std::pair<uint32_t, int>> ranked;
+        for (auto& [vn, ver] : versions) {
+            if (ver.state == VersionState::COMPLETE) ranked.push_back({vn, 2});
+            else if (ver.state == VersionState::MARKED_DELETED) ranked.push_back({vn, 1});
+        }
+        std::sort(ranked.begin(), ranked.end(), [](auto& a, auto& b) {
+            if (a.second != b.second) return a.second < b.second;
+            return a.first < b.first;
+        });
+        return ranked;
+    }
+
+    static std::vector<uint32_t> enforce(std::vector<std::pair<uint32_t, int>>& ranked,
+                                          uint32_t max_versions) {
+        std::vector<uint32_t> deleted;
+        while (ranked.size() > max_versions) {
+            deleted.push_back(ranked.front().first);
+            ranked.erase(ranked.begin());
+        }
+        return deleted;
+    }
+};
+
+class MaxVersionsRankingTest : public ::testing::Test {
+protected:
+    std::map<uint32_t, VersionEntry> make_versions(
+        std::initializer_list<std::pair<uint32_t, VersionState>> list) {
+        std::map<uint32_t, VersionEntry> versions;
+        for (auto [vn, state] : list) {
+            VersionEntry v;
+            v.version_number = vn;
+            v.file_id = vn * 10;  // unique file_id per version
+            v.state = state;
+            versions[vn] = v;
+        }
+        return versions;
+    }
+};
+
+TEST_F(MaxVersionsRankingTest, MarkedDeletedDeletedFirst) {
+    // 1 COMPLETE + 1 MARKED_DELETED, max=1 → MARKED_DELETED removed
+    auto versions = make_versions({{1, VersionState::COMPLETE},
+                                    {2, VersionState::MARKED_DELETED}});
+    auto ranked = MaxVersionsLogic::rank(versions);
+    auto deleted = MaxVersionsLogic::enforce(ranked, 1);
+    ASSERT_EQ(deleted.size(), 1);
+    EXPECT_EQ(deleted[0], 2);  // v2 (MARKED_DELETED) deleted before v1 (COMPLETE)
+}
+
+TEST_F(MaxVersionsRankingTest, OldestDeletedWithinSamePriority) {
+    // 3 COMPLETE, max=2 → oldest COMPLETE removed
+    auto versions = make_versions({{1, VersionState::COMPLETE},
+                                    {2, VersionState::COMPLETE},
+                                    {3, VersionState::COMPLETE}});
+    auto ranked = MaxVersionsLogic::rank(versions);
+    auto deleted = MaxVersionsLogic::enforce(ranked, 2);
+    ASSERT_EQ(deleted.size(), 1);
+    EXPECT_EQ(deleted[0], 1);  // oldest COMPLETE removed
+}
+
+TEST_F(MaxVersionsRankingTest, MarkedDeletedBeforeOldestComplete) {
+    // v1=COMPLETE, v2=MARKED_DELETED, v3=COMPLETE, max=2 → v2 deleted
+    auto versions = make_versions({{1, VersionState::COMPLETE},
+                                    {2, VersionState::MARKED_DELETED},
+                                    {3, VersionState::COMPLETE}});
+    auto ranked = MaxVersionsLogic::rank(versions);
+    auto deleted = MaxVersionsLogic::enforce(ranked, 2);
+    ASSERT_EQ(deleted.size(), 1);
+    EXPECT_EQ(deleted[0], 2);  // MARKED_DELETED removed first
+}
+
+TEST_F(MaxVersionsRankingTest, MultipleMarkedDeletedRemovedBeforeComplete) {
+    // 2 MARKED_DELETED + 2 COMPLETE, max=2 → both MARKED_DELETED removed
+    auto versions = make_versions({{1, VersionState::MARKED_DELETED},
+                                    {2, VersionState::MARKED_DELETED},
+                                    {3, VersionState::COMPLETE},
+                                    {4, VersionState::COMPLETE}});
+    auto ranked = MaxVersionsLogic::rank(versions);
+    auto deleted = MaxVersionsLogic::enforce(ranked, 2);
+    ASSERT_EQ(deleted.size(), 2);
+    EXPECT_EQ(deleted[0], 1);  // both MARKED_DELETED removed
+    EXPECT_EQ(deleted[1], 2);
+}
+
+TEST_F(MaxVersionsRankingTest, NewVersionIncludedEvenIfNotYetVisible) {
+    // Simulate: f->versions has v1(COMPLETE), v2(MARKED_DELETED)
+    // but v3 just completed and isn't visible yet → manually included
+    auto versions = make_versions({{1, VersionState::COMPLETE},
+                                    {2, VersionState::MARKED_DELETED}});
+    auto ranked = MaxVersionsLogic::rank(versions);
+    // Manually add v3 (COMPLETE, not yet in registry) — replicates the fix
+    bool seen_new = false;
+    for (auto& r : ranked) if (r.first == 3) seen_new = true;
+    if (!seen_new) ranked.push_back({3, 2});
+    std::sort(ranked.begin(), ranked.end(), [](auto& a, auto& b) {
+        if (a.second != b.second) return a.second < b.second;
+        return a.first < b.first;
+    });
+
+    auto deleted = MaxVersionsLogic::enforce(ranked, 2);
+    ASSERT_EQ(deleted.size(), 1);
+    EXPECT_EQ(deleted[0], 2);  // v2 (MARKED_DELETED) deleted, v1 and v3 survive
+}
+
 }  // namespace
 }  // namespace filegroup

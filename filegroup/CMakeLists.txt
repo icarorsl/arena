@@ -450,10 +450,19 @@ if(GTest_FOUND)
         $<TARGET_OBJECTS:filegroup_distribution>
         $<TARGET_OBJECTS:filegroup_encryption>
         $<TARGET_OBJECTS:filegroup_storage>
+        $<TARGET_OBJECTS:filegroup_upload>
+        $<TARGET_OBJECTS:filegroup_read>
+        $<TARGET_OBJECTS:filegroup_compaction>
+        $<TARGET_OBJECTS:filegroup_heartbeat>
+        $<TARGET_OBJECTS:filegroup_expiry>
+        $<TARGET_OBJECTS:filegroup_metrics>
+        $<TARGET_OBJECTS:filegroup_versioning>
+        $<TARGET_OBJECTS:filegroup_recovery>
+        $<TARGET_OBJECTS:filegroup_scrubber>
         $<TARGET_OBJECTS:filegroup_engine>
     )
     target_include_directories(test_integration_upload_read PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_integration_upload_read PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
+    target_link_libraries(test_integration_upload_read PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
     add_test(NAME IntegrationUploadRead COMMAND test_integration_upload_read)
 endif()
 
