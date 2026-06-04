@@ -33,6 +33,9 @@ service Engine {
 
     // Session management
     rpc CancelSession(CancelSessionRequest) returns (CancelSessionResponse);
+
+    // Storage introspection
+    rpc ListSegments(ListSegmentsRequest) returns (ListSegmentsResponse);
 }
 
 // ============================================================================
@@ -290,5 +293,28 @@ message TableInfo {
 
 message GetTablesResponse {
     repeated TableInfo tables = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// Storage Introspection — List internal segment files
+// ============================================================================
+
+message ListSegmentsRequest {}
+
+message SegmentInfo {
+    string file_name = 1;        // e.g. "seg_1_1_1_0.seg" or "page_1_1_1_0.seg"
+    uint32 node_id = 2;          // Storage node that owns this segment
+    uint32 group_id = 3;         // File group
+    uint32 table_id = 4;         // Table ID (0 for page segments)
+    uint64 total_size = 5;       // Total segment file size on disk (bytes)
+    uint64 used_bytes = 6;       // Bytes actually used for chunk data
+    uint32 chunk_count = 7;      // Number of chunks in this segment
+    bool is_page = 8;            // true = page segment (has expiry), false = standard
+    uint64 created_at_us = 9;    // Segment creation timestamp
+}
+
+message ListSegmentsResponse {
+    repeated SegmentInfo segments = 1;
     string error = 2;
 }

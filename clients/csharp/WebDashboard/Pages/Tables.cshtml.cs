@@ -10,6 +10,7 @@ public class TablesModel : PageModel
     private readonly Engine.EngineClient _client;
 
     public List<TableSummary> Tables { get; set; } = new();
+    public List<SegmentEntry> AllSegments { get; set; } = new();
     public string? Error { get; set; }
     public bool Created { get; set; }
 
@@ -82,6 +83,25 @@ public class TablesModel : PageModel
                     else t.DeletedCount++;
                 }
             }
+
+            // Load all segments once
+            try
+            {
+                var segResp = await _client.ListSegmentsAsync(new ListSegmentsRequest());
+                AllSegments = segResp.Segments.Select(s => new SegmentEntry
+                {
+                    FileName = s.FileName,
+                    NodeId = s.NodeId,
+                    GroupId = s.GroupId,
+                    TableId = s.TableId,
+                    ChunkCount = s.ChunkCount,
+                    UsedBytes = s.UsedBytes,
+                    TotalSize = s.TotalSize,
+                    IsPage = s.IsPage,
+                    CreatedAtUs = s.CreatedAtUs
+                }).ToList();
+            }
+            catch { /* segments are optional, don't fail the page */ }
         }
         catch (Exception ex)
         {
@@ -102,5 +122,18 @@ public class TablesModel : PageModel
         public uint ReplicationFactor { get; set; }
         public uint MaxVersions { get; set; }
         public uint ExpiresInDays { get; set; }
+    }
+
+    public class SegmentEntry
+    {
+        public string FileName { get; set; } = "";
+        public uint NodeId { get; set; }
+        public uint GroupId { get; set; }
+        public uint TableId { get; set; }
+        public uint ChunkCount { get; set; }
+        public ulong UsedBytes { get; set; }
+        public ulong TotalSize { get; set; }
+        public bool IsPage { get; set; }
+        public ulong CreatedAtUs { get; set; }
     }
 }

@@ -95,6 +95,9 @@ public:
     /// Get total data bytes.
     uint64_t total_data_bytes() const;
 
+    /// Set node/group/table metadata in the header (call after construction).
+    void set_ownership(uint16_t node_id, uint32_t group_id, uint16_t table_id);
+
 private:
     void write_header();
     void read_header();

@@ -38,6 +38,8 @@ public:
     std::vector<FIR> list_files(uint32_t gid,uint32_t tid);
     std::vector<TIR> get_tables();
     SR create_table(uint32_t tid,uint32_t gid,const std::string& name,uint32_t fed=0,uint32_t mv=0);
+    struct SIR { std::string file_name; uint32_t node_id=0,group_id=0,table_id=0,chunk_count=0; uint64_t total_size=0,used_bytes=0,created_at_us=0; bool is_page=false; };
+    std::vector<SIR> list_segments();
     bool ping() const;
     Engine& engine(){return *engine_;}
 private:

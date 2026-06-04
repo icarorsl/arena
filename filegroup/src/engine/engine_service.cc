@@ -1,10 +1,12 @@
 #include "engine/engine_service.h"
 #include <algorithm>
 #include <cstring>
+#include <dirent.h>
 #include <iostream>
 #include <set>
 #include <sys/stat.h>
 #include "common/clock.h"
+#include "segment/segment.h"
 namespace filegroup {
 EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::string& dr):config_(c),metrics_(m){
  mkdir(dr.c_str(), 0755); // ensure parent dir exists
@@ -124,5 +126,50 @@ EngineServer::SR EngineServer::create_table(uint32_t tid,uint32_t gid,const std:
  e.file_expires_in_days=fed;e.max_versions=mv;
  auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::TABLE_CREATED,&e,sizeof(e));(void)lsn;
  return{ok,ok?"":"create failed"};
+}
+
+std::vector<EngineServer::SIR> EngineServer::list_segments(){
+ std::vector<SIR> r;
+ for(auto& s:ss_){
+  auto dir=s->data_dir();
+  DIR* dp=opendir(dir.c_str());
+  if(!dp)continue;
+  struct dirent* de;
+  while((de=readdir(dp))!=nullptr){
+   std::string name(de->d_name);
+   if(name.size()<4||(name.substr(name.size()-4)!=".seg"))continue;
+   std::string path=dir+"/"+name;
+   try{
+    Segment seg(path);
+    auto& h=seg.header();
+    SIR si;
+    si.file_name=name;
+    si.node_id=h.node_id;
+    si.group_id=h.group_id;
+    si.table_id=h.table_id;
+    // Fallback: parse filename {type}_{node}_{group}_{table}_{seq}.seg
+    if(si.node_id==0&&si.group_id==0&&si.table_id==0){
+     // e.g. "page_1_1_10_0.seg" or "seg_1_1_10_0.seg"
+     auto u1=name.find('_'); if(u1==std::string::npos)continue;
+     auto u2=name.find('_',u1+1); if(u2==std::string::npos)continue;
+     auto u3=name.find('_',u2+1); if(u3==std::string::npos)continue;
+     try{
+      si.node_id=(uint32_t)std::stoul(name.substr(u1+1,u2-u1-1));
+      si.group_id=(uint32_t)std::stoul(name.substr(u2+1,u3-u2-1));
+      auto u4=name.find('_',u3+1);
+      si.table_id=(uint32_t)std::stoul(name.substr(u3+1,(u4!=std::string::npos?u4:name.size()-4)-u3-1));
+     }catch(...){}
+    }
+    si.chunk_count=h.chunk_count;
+    si.total_size=h.write_offset;
+    si.used_bytes=h.total_data_bytes;
+    si.created_at_us=h.created_at_us;
+    si.is_page=(h.segment_type==(uint8_t)SegmentType::PAGE);
+    r.push_back(si);
+   }catch(...){}
+  }
+  closedir(dp);
+ }
+ return r;
 }
 }

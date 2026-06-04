@@ -84,11 +84,14 @@ else
                 <th>Chunk</th>
                 <th>Max&nbsp;Ver</th>
                 <th>Expires</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
         @foreach (var t in Model.Tables)
         {
+            var segs = Model.AllSegments.Where(s => s.GroupId == t.GroupId && s.TableId == t.TableId).ToList();
+            var rowId = $"seg-{t.GroupId}-{t.TableId}";
             <tr>
                 <td class="mono">
                     <a href="/Files?group=@t.GroupId&table=@t.TableId">@t.TableId</a>
@@ -102,7 +105,50 @@ else
                 <td class="mono">@(t.ChunkSize > 0 ? FormatSize(t.ChunkSize) : "—")</td>
                 <td class="mono">@(t.MaxVersions > 0 ? t.MaxVersions.ToString() : "—")</td>
                 <td class="mono">@(t.ExpiresInDays > 0 ? $"{t.ExpiresInDays}d" : "never")</td>
+                <td>
+                    @if (segs.Count > 0)
+                    {
+                        <button onclick="var r=document.getElementById('@rowId');r.style.display=r.style.display==='none'?'':'none';this.textContent=r.style.display==='none'?'▸ Segs (@segs.Count)':'▾ Segs (@segs.Count)';" style="background:var(--surface);color:var(--accent);border:1px solid var(--border);border-radius:var(--radius);padding:.15rem .5rem;cursor:pointer;font-size:.75rem;white-space:nowrap;">▸ Segs (@segs.Count)</button>
+                    }
+                    else
+                    {
+                        <span style="color:var(--muted);font-size:.75rem;">—</span>
+                    }
+                </td>
             </tr>
+            @if (segs.Count > 0)
+            {
+            <tr id="@rowId" style="display:none;">
+                <td colspan="11" style="padding:.5rem 1rem;background:var(--surface);border-bottom:1px solid var(--border);">
+                    <div style="font-size:.8rem;color:var(--muted);margin-bottom:.35rem;">Segment files for table @t.TableId:</div>
+                    <table style="margin:0;font-size:.75rem;">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Node</th>
+                                <th>Type</th>
+                                <th>Chunks</th>
+                                <th>Used</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var s in segs)
+                        {
+                            <tr>
+                                <td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@s.FileName">@s.FileName</td>
+                                <td>@s.NodeId</td>
+                                <td><span class="badge @(s.IsPage ? "" : "")" style="font-size:.7rem;">@(s.IsPage ? "page" : "std")</span></td>
+                                <td class="mono">@s.ChunkCount</td>
+                                <td class="mono">@FormatSize(s.UsedBytes)</td>
+                                <td class="mono">@FormatSize(s.TotalSize)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+            }
         }
         </tbody>
     </table>

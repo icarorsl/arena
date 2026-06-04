@@ -295,4 +295,14 @@ bool PageSegment::unlink_page(const std::string& path) {
     return unlink(path.c_str()) == 0;
 }
 
+void Segment::set_ownership(uint16_t node_id, uint32_t group_id, uint16_t table_id) {
+    std::lock_guard<std::mutex> lock(write_mutex_);
+    header_.node_id = node_id;
+    header_.group_id = group_id;
+    header_.table_id = table_id;
+    header_.header_crc32c = compute_header_crc32c(header_);
+    write_header();
+    fdatasync(fd_);
+}
+
 }  // namespace filegroup

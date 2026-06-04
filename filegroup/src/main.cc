@@ -217,6 +217,29 @@ public:
         return Status::OK;
     }
 
+    // ── Storage Introspection ──────────────────────────────────────────
+
+    grpc::Status ListSegments(ServerContext* ctx,
+                               const filegroup::engine::ListSegmentsRequest* req,
+                               filegroup::engine::ListSegmentsResponse* resp) override
+    {
+        (void)ctx; (void)req;
+        auto segments = server_.list_segments();
+        for (auto& s : segments) {
+            auto* si = resp->add_segments();
+            si->set_file_name(s.file_name);
+            si->set_node_id(s.node_id);
+            si->set_group_id(s.group_id);
+            si->set_table_id(s.table_id);
+            si->set_total_size(s.total_size);
+            si->set_used_bytes(s.used_bytes);
+            si->set_chunk_count(s.chunk_count);
+            si->set_is_page(s.is_page);
+            si->set_created_at_us(s.created_at_us);
+        }
+        return Status::OK;
+    }
+
     // ReadFile is server-streaming — simplified for Phase 1
     grpc::Status ReadFile(ServerContext* ctx,
                            const filegroup::engine::ReadFileRequest* req,

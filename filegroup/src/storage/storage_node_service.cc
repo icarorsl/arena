@@ -158,6 +158,7 @@ Segment* StorageServer::get_active_segment(uint32_t group_id, uint32_t table_id,
     std::string path = segment_filename(group_id, table_id, expires_at_us, segment_sequence_++);
 
     auto seg = std::make_unique<Segment>(path, true);
+    seg->set_ownership(node_id_, group_id, (uint16_t)table_id);
     Segment* ptr = seg.get();
     segments_[key] = std::move(seg);
     return ptr;
