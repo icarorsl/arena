@@ -21,7 +21,7 @@ builder.Services.AddSingleton(sp =>
 {
     var channel = GrpcChannel.ForAddress(engineAddress, new GrpcChannelOptions
     {
-        MaxReceiveMessageSize = 256 * 1024 * 1024, // 256 MB
+        MaxReceiveMessageSize = null, // unlimited — engine sends entire file as single message
         MaxSendMessageSize = 256 * 1024 * 1024
     });
     return new Engine.EngineClient(channel);

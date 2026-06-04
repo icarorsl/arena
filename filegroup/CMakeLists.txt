@@ -331,11 +331,28 @@ if(GTest_FOUND)
 
     add_executable(test_compaction tests/unit/test_compaction.cc
         $<TARGET_OBJECTS:filegroup_common>
+        $<TARGET_OBJECTS:filegroup_config>
+        $<TARGET_OBJECTS:filegroup_file_header>
+        $<TARGET_OBJECTS:filegroup_manifest>
+        $<TARGET_OBJECTS:filegroup_raft>
         $<TARGET_OBJECTS:filegroup_segment>
+        $<TARGET_OBJECTS:filegroup_distribution>
+        $<TARGET_OBJECTS:filegroup_encryption>
         $<TARGET_OBJECTS:filegroup_compaction>
+        $<TARGET_OBJECTS:filegroup_registry>
+        $<TARGET_OBJECTS:filegroup_storage>
+        $<TARGET_OBJECTS:filegroup_upload>
+        $<TARGET_OBJECTS:filegroup_read>
+        $<TARGET_OBJECTS:filegroup_versioning>
+        $<TARGET_OBJECTS:filegroup_heartbeat>
+        $<TARGET_OBJECTS:filegroup_recovery>
+        $<TARGET_OBJECTS:filegroup_scrubber>
+        $<TARGET_OBJECTS:filegroup_expiry>
+        $<TARGET_OBJECTS:filegroup_engine>
+        $<TARGET_OBJECTS:filegroup_metrics>
     )
     target_include_directories(test_compaction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_compaction PRIVATE GTest::gtest GTest::gtest_main)
+    target_link_libraries(test_compaction PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
     add_test(NAME Compaction COMMAND test_compaction)
 
     add_executable(test_registry_service tests/unit/test_registry_service.cc

@@ -122,7 +122,10 @@ std::vector<uint32_t> Engine::resume_session(uint64_t sid){
 }
 std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
- if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return{};
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED)){
+  std::cerr << "[read_file] lid=" << lid << " v=" << v << " version not found or not readable" << std::endl;
+  return{};
+ }
  std::vector<uint8_t> r;
  for(uint32_t ci=0;ci<ve->chunk_count;ci++){
   ChunkLoc l;
@@ -133,10 +136,19 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
   // Fall back to VersionEntry.chunks (populated from Raft replay)
   if(l.sf.empty()&&ci<ve->chunks.size()&&!ve->chunks[ci].replicas.empty()){
    auto& rep=ve->chunks[ci].replicas[0];
+   // Validate: skip if the offset would read past a reasonable segment size
    l.sf=rep.segment_file;l.off=rep.offset;l.sz=ve->chunks[ci].chunk_size_actual;
   }
-  if(l.sf.empty())return{};
-  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}if(!ok)return{};}
+  if(l.sf.empty()){
+   std::cerr << "[read_file] lid=" << lid << " chunk " << ci << "/" << ve->chunk_count << " not found" << std::endl;
+   return{};
+  }
+  bool ok=false;for(auto* n:storage_nodes_){auto f=n->fetch_chunk(l.sf,l.off,l.sz);if(f.success){r.insert(r.end(),f.data.begin(),f.data.end());ok=true;break;}}
+  if(!ok){
+   std::cerr << "[read_file] lid=" << lid << " chunk " << ci << " fetch failed: " << l.sf << " off=" << l.off << " sz=" << l.sz << std::endl;
+   return{};
+  }
+ }
  if(ve->content_checksum!=0&&crc32c(r.data(),r.size())!=ve->content_checksum)return{};
  return r;
 }

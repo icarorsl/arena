@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <set>
+#include <unordered_map>
 #include <cstdio>
 #include <chrono>
 #include <dirent.h>
@@ -78,13 +79,19 @@ uint32_t CompactionService::run_once() {
 
     // Build set of live physical file IDs (those with >=1 non-deleted version)
     std::set<uint64_t> live_file_ids;
+    // Also build reverse map: physical file_id → LogicalFileEntry (for safety checks)
+    std::unordered_map<uint64_t, const LogicalFileEntry*> phys_to_logical;
     auto all_files = registry_->all_files();
     for (const auto& f : all_files) {
         for (const auto& [vn, ver] : f.versions) {
             if (ver.state == VersionState::COMPLETE ||
                 ver.state == VersionState::SUPERSEDED ||
-                ver.state == VersionState::MARKED_DELETED) {
+                ver.state == VersionState::MARKED_DELETED ||
+                ver.state == VersionState::UPLOADING) {
                 live_file_ids.insert(ver.file_id);
+            }
+            if (phys_to_logical.find(ver.file_id) == phys_to_logical.end()) {
+                phys_to_logical[ver.file_id] = &f;
             }
         }
     }
@@ -131,9 +138,32 @@ uint32_t CompactionService::run_once() {
                     auto ceh = old_seg.read_chunk_header_at(cursor);
                     uint64_t data_offset = cursor + sizeof(ChunkEntryHeader);
                     uint64_t next_cursor = data_offset + ceh.chunk_size;
-                    bool live = !ceh.is_deleted && live_file_ids.count(ceh.file_id) > 0;
 
-                    if (live) {
+                    // A chunk is live if not explicitly deleted AND its file_id has
+                    // at least one non-deleted version. We use a conservative check:
+                    // if is_deleted=0 and the file_id has no live version tracked,
+                    // we KEEP the chunk rather than risk data loss from stale metadata.
+                    bool keep = !ceh.is_deleted;
+                    if (keep && live_file_ids.count(ceh.file_id) == 0) {
+                        // file_id not in live set — check reverse map
+                        auto it = phys_to_logical.find(ceh.file_id);
+                        if (it != phys_to_logical.end()) {
+                            bool has_live = false;
+                            for (auto& [vn, ver] : it->second->versions) {
+                                if (ver.state == VersionState::COMPLETE ||
+                                    ver.state == VersionState::SUPERSEDED ||
+                                    ver.state == VersionState::MARKED_DELETED ||
+                                    ver.state == VersionState::UPLOADING) {
+                                    has_live = true;
+                                    break;
+                                }
+                            }
+                            keep = has_live;
+                        }
+                        // else: physical file_id not referenced by any logical file → orphaned, delete
+                    }
+
+                    if (keep) {
                         live_chunks.push_back({cursor, ceh.file_id,
                                                ceh.chunk_index, ceh.chunk_size,
                                                ceh.chunk_checksum, ceh.is_encrypted != 0});
