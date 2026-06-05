@@ -31,6 +31,8 @@ public:
     bool read_file_stream(uint64_t lid, uint32_t vn, std::function<void(const uint8_t*,size_t)> callback);
     struct RCR { std::vector<uint8_t> data; std::string error; };
     RCR read_chunk(uint64_t lid,uint32_t vn,uint32_t ci);
+    struct RRR { std::vector<uint8_t> data; std::string error; };
+    RRR read_range(uint64_t lid,uint32_t vn,uint64_t offset_bytes,uint64_t length_bytes);
     struct SR { bool success=false; std::string error; };
     SR delete_file(uint64_t lid),delete_version(uint64_t lid,uint32_t vn),cancel_session(uint64_t sid);
     struct FIR { bool success=false; uint64_t logical_file_id=0,total_size=0,created_at_us=0; uint32_t table_id=0,group_id=0,latest_version=0; FileState state=FileState::ACTIVE; std::string error; };

@@ -38,7 +38,7 @@
     else
     {
         var version = HttpContext.Request.Query["version"].FirstOrDefault() ?? "0";
-        <video controls autoplay muted playsinline preload="auto"
+        <video controls preload="metadata" playsinline
                src="/File/@RouteData.Values["id"]?handler=Download&version=@version">
         </video>
     }

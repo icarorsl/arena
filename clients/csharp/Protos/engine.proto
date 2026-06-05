@@ -19,6 +19,7 @@ service Engine {
     // Read a file
     rpc ReadFile(ReadFileRequest) returns (stream ReadFileResponse);
     rpc ReadChunk(ReadChunkRequest) returns (ReadChunkResponse);
+    rpc ReadRange(ReadRangeRequest) returns (ReadRangeResponse);
 
     // File management
     rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
@@ -163,6 +164,22 @@ message ReadChunkRequest {
 }
 
 message ReadChunkResponse {
+    bytes data = 1;
+    string error = 2;
+}
+
+// ============================================================================
+// ReadRange — Read a byte range of a file
+// ============================================================================
+
+message ReadRangeRequest {
+    uint64 logical_file_id = 1;
+    uint32 version_number = 2;                   // 0 = latest complete version
+    uint64 offset_bytes = 3;                     // Byte offset in file
+    uint64 length_bytes = 4;                     // Number of bytes to read
+}
+
+message ReadRangeResponse {
     bytes data = 1;
     string error = 2;
 }

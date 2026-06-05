@@ -94,39 +94,85 @@ public class FileModel : PageModel
     {
         try
         {
-            using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
-
             bool isRange = Request.Headers.Range.ToString().StartsWith("bytes=");
 
             if (isRange)
             {
-                // Buffer everything for Range — need full data to calculate response
-                using var ms = new MemoryStream();
-                while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
-                {
-                    var resp = call.ResponseStream.Current;
-                    if (!string.IsNullOrEmpty(resp.Error)) return NotFound();
-                    ms.Write(resp.Data.Span);
-                }
-                var data = ms.ToArray();
-                if (data.Length == 0) return NotFound();
+                // Get file size from version info
+                var vers = await _client.ListVersionsAsync(new ListVersionsRequest { LogicalFileId = (ulong)id });
+                var vi = version > 0
+                    ? vers.Versions.FirstOrDefault(v => v.VersionNumber == version)
+                    : vers.Versions.OrderByDescending(v => v.VersionNumber).FirstOrDefault();
+                if (vi == null || vi.TotalSize == 0) return NotFound();
+                long totalSize = (long)vi.TotalSize;
 
-                Response.ContentType = DetectMimeType(data);
-                Response.Headers["Accept-Ranges"] = "bytes";
-
+                // Parse Range header
                 var rh = Request.Headers.Range.ToString();
                 var p = rh[6..].Split('-');
                 long start = long.TryParse(p[0], out var s) ? s : 0;
-                long end = p.Length > 1 && long.TryParse(p[1], out var e) ? Math.Min(e, data.Length - 1) : data.Length - 1;
-                Response.StatusCode = 206;
-                Response.Headers["Content-Range"] = $"bytes {start}-{end}/{data.Length}";
+                long end = p.Length > 1 && long.TryParse(p[1], out var e) ? Math.Min(e, totalSize - 1) : totalSize - 1;
+                if (start > end || start >= totalSize) return BadRequest();
+                ulong length = (ulong)(end - start + 1);
 
-                await Response.Body.WriteAsync(data.AsMemory((int)start, (int)(end - start + 1)));
+                Console.Error.WriteLine($"[download] RANGE: file={id} v={version} bytes={start}-{end}/{totalSize} len={length}");
+
+                // Fetch only the requested byte range from the engine
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var rangeResp = await _client.ReadRangeAsync(new ReadRangeRequest
+                {
+                    LogicalFileId = (ulong)id,
+                    VersionNumber = version,
+                    OffsetBytes = (ulong)start,
+                    LengthBytes = length
+                });
+                sw.Stop();
+                Console.Error.WriteLine($"[download] ReadRangeAsync took {sw.ElapsedMilliseconds}ms, got {rangeResp.Data.Length} bytes");
+
+                if (!string.IsNullOrEmpty(rangeResp.Error)) return NotFound();
+
+                var data = rangeResp.Data.ToByteArray();
+                if (data.Length == 0) return NotFound();
+
+                // Detect MIME from first bytes if range starts at 0
+                if (start == 0 && data.Length >= 12)
+                {
+                    Response.ContentType = DetectMimeType(data.AsSpan(0, Math.Min(12, data.Length)));
+                }
+                else
+                {
+                    // For non-zero start ranges, sniff magic bytes from file header
+                    try
+                    {
+                        var sniffResp = await _client.ReadRangeAsync(new ReadRangeRequest
+                        {
+                            LogicalFileId = (ulong)id,
+                            VersionNumber = version,
+                            OffsetBytes = 0,
+                            LengthBytes = 12
+                        });
+                        if (string.IsNullOrEmpty(sniffResp.Error) && sniffResp.Data.Length >= 4)
+                            Response.ContentType = DetectMimeType(sniffResp.Data.Span);
+                        else
+                            Response.ContentType = "application/octet-stream";
+                    }
+                    catch { Response.ContentType = "application/octet-stream"; }
+                }
+
+                Response.Headers["Accept-Ranges"] = "bytes";
+                Response.StatusCode = 206;
+                Response.Headers["Content-Range"] = $"bytes {start}-{start + data.Length - 1}/{totalSize}";
+
+                await Response.Body.WriteAsync(data);
             }
             else
             {
+                Console.Error.WriteLine($"[download] FULL: file={id} v={version} — streaming via ReadFile");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                using var call = _client.ReadFile(new ReadFileRequest { LogicalFileId = (ulong)id, VersionNumber = version });
+
                 // Stream immediately — set MIME from first chunk, flush rest
                 var contentTypeSet = false;
+                long totalBytes = 0;
                 while (await call.ResponseStream.MoveNext(HttpContext.RequestAborted))
                 {
                     var resp = call.ResponseStream.Current;
@@ -139,9 +185,12 @@ public class FileModel : PageModel
                         contentTypeSet = true;
                     }
 
+                    totalBytes += resp.Data.Length;
                     await Response.Body.WriteAsync(resp.Data.Memory, HttpContext.RequestAborted);
                     await Response.Body.FlushAsync(HttpContext.RequestAborted);
                 }
+                sw.Stop();
+                Console.Error.WriteLine($"[download] ReadFile stream done: {totalBytes} bytes in {sw.ElapsedMilliseconds}ms");
             }
         }
         catch (OperationCanceledException) { }

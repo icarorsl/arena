@@ -186,6 +186,28 @@ public class FileGroupClient : IDisposable
         return response.Data.ToByteArray();
     }
 
+    /// <summary>Read a byte range of a file without downloading the entire file.</summary>
+    public async Task<byte[]> ReadRangeAsync(
+        ulong logicalFileId,
+        uint versionNumber,
+        ulong offsetBytes,
+        ulong lengthBytes,
+        CancellationToken ct = default)
+    {
+        var response = await _grpc.ReadRangeAsync(new ReadRangeRequest
+        {
+            LogicalFileId = logicalFileId,
+            VersionNumber = versionNumber,
+            OffsetBytes = offsetBytes,
+            LengthBytes = lengthBytes
+        }, _authHeaders, cancellationToken: ct);
+
+        if (!string.IsNullOrEmpty(response.Error))
+            throw new IOException($"Read range failed: {response.Error}");
+
+        return response.Data.ToByteArray();
+    }
+
     // ========================================================================
     // Management
     // ========================================================================

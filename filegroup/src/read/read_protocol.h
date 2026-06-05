@@ -24,6 +24,9 @@ namespace filegroup {
  * - Replica failover on read failures
  * - Partial reads (specific byte ranges)
  * - Version selection
+ *
+ * Phase 2 — full read protocol session management not yet implemented.
+ * Byte-range reads are handled directly by Engine::read_range().
  */
 
 struct ReadSessionConfig {

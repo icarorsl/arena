@@ -73,6 +73,11 @@ bool EngineServer::read_file_stream(uint64_t lid,uint32_t vn,
  return true;
 }
 EngineServer::RCR EngineServer::read_chunk(uint64_t lid,uint32_t vn,uint32_t ci){RCR r;r.data=engine_->read_chunk(lid,vn,ci);if(r.data.empty())r.error="not found";return r;}
+EngineServer::RRR EngineServer::read_range(uint64_t lid,uint32_t vn,uint64_t offset_bytes,uint64_t length_bytes){RRR r;
+ auto t0=now_us();r.data=engine_->read_range(lid,vn,offset_bytes,length_bytes);
+ if(r.data.empty())r.error="not found";
+ else if(metrics_){metrics_->inc_counter("file_read_range_total");metrics_->observe_chunk_read_latency_ms((now_us()-t0)/1000.0);}
+ return r;}
 EngineServer::SR EngineServer::delete_file(uint64_t lid){
  auto* f=rc_->get_file(lid);
  if(!f)return{false,"file not found"};

@@ -276,6 +276,21 @@ public:
         return Status::OK;
     }
 
+    grpc::Status ReadRange(ServerContext* ctx,
+                            const filegroup::engine::ReadRangeRequest* req,
+                            filegroup::engine::ReadRangeResponse* resp) override
+    {
+        (void)ctx;
+        auto result = server_.read_range(req->logical_file_id(), req->version_number(),
+                                          req->offset_bytes(), req->length_bytes());
+        if (!result.data.empty()) {
+            resp->set_data(result.data.data(), result.data.size());
+        } else if (!result.error.empty()) {
+            resp->set_error(result.error);
+        }
+        return Status::OK;
+    }
+
 private:
     filegroup::EngineServer& server_;
 };

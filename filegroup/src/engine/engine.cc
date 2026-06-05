@@ -163,6 +163,48 @@ std::vector<uint8_t> Engine::read_file(uint64_t lid,uint32_t v){
 }
 std::vector<uint8_t> Engine::read_chunk(uint64_t lid,uint32_t v,uint32_t ci){auto d=read_file(lid,v);return d;}
 
+std::vector<uint8_t> Engine::read_range(uint64_t lid,uint32_t v,uint64_t offset_bytes,uint64_t length_bytes){
+ const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
+ if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED)){
+  std::cerr << "[read_range] lid=" << lid << " v=" << v << " version not found or not readable" << std::endl;
+  return{};
+ }
+ if(ve->chunk_count==0||length_bytes==0)return{};
+ uint64_t cs=ve->chunk_size;
+ uint64_t total_size=(uint64_t)ve->chunk_count*cs;
+ // Clamp range to file bounds
+ if(offset_bytes>=total_size)return{};
+ uint64_t end_bytes=offset_bytes+length_bytes;
+ if(end_bytes>total_size)end_bytes=total_size;
+ length_bytes=end_bytes-offset_bytes;
+ if(length_bytes==0)return{};
+ // Compute chunk indices that span the requested byte range
+ uint32_t first_ci=(uint32_t)(offset_bytes/cs);
+ uint32_t last_ci=(uint32_t)((end_bytes-1)/cs);
+ std::vector<uint8_t> r;
+ for(uint32_t ci=first_ci;ci<=last_ci;ci++){
+  std::vector<uint8_t> chunk;
+  if(!read_single_chunk(lid,v,ci,chunk)){
+   std::cerr << "[read_range] lid=" << lid << " chunk " << ci << " fetch failed" << std::endl;
+   return{};
+  }
+  // Slice first and last chunks to the requested byte range
+  const uint8_t* start=chunk.data();
+  size_t len=chunk.size();
+  if(ci==first_ci){
+   uint64_t skip=offset_bytes-(uint64_t)first_ci*cs;
+   if(skip>=len)continue;
+   start+=skip;len-=skip;
+  }
+  if(ci==last_ci){
+   uint64_t keep=end_bytes-(uint64_t)last_ci*cs;
+   if(keep<len)len=(size_t)keep;
+  }
+  if(len>0)r.insert(r.end(),start,start+len);
+ }
+ return r;
+}
+
 bool Engine::read_single_chunk(uint64_t lid,uint32_t v,uint32_t ci,std::vector<uint8_t>& out){
  const VersionEntry* ve=v>0?registry_->get_version(lid,v):registry_->get_latest_complete(lid);
  if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return false;
