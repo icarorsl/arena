@@ -88,9 +88,6 @@ public:
     /// List files by group/table.
     std::vector<LogicalFileEntry> list_files(uint16_t table_id, uint32_t group_id);
 
-    /// Return all files (for compaction/scrubbing).
-    std::vector<LogicalFileEntry> all_files();
-
     /// Get confirmed chunks for a session.
     std::vector<uint32_t> get_confirmed_chunks(uint64_t session_id);
 
@@ -100,16 +97,8 @@ public:
     /// Get cluster health.
     std::unordered_map<uint16_t, NodeState> get_cluster_health();
 
-    /// Table management.
-    std::vector<TableEntry> get_tables();
-
     /// Find the current leader server.
     RegistryServer* find_leader();
-
-    /// Generate unique IDs.
-    uint64_t next_logical_file_id();
-    uint64_t next_file_id();
-    uint64_t next_session_id();
 
 private:
     std::vector<RegistryServer*> servers_;

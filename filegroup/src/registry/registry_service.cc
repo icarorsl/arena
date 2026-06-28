@@ -56,12 +56,6 @@ RegistryServer::RegistryServer(uint32_t node_id,
                 }
                 break;
             }
-            case ManifestEntryType::VERSION_RECLAIMED: {
-                if (body_length >= sizeof(VersionReclaimedEntry)) {
-                    file_index_.apply_version_reclaimed(*static_cast<const VersionReclaimedEntry*>(body));
-                }
-                break;
-            }
             case ManifestEntryType::FILE_DELETED: {
                 if (body_length >= sizeof(FileDeletedEntry)) {
                     file_index_.apply_file_deleted(*static_cast<const FileDeletedEntry*>(body));
@@ -95,12 +89,6 @@ RegistryServer::RegistryServer(uint32_t node_id,
             case ManifestEntryType::MAX_VERSIONS_ENFORCED: {
                 if (body_length >= sizeof(MaxVersionsEnforcedEntry)) {
                     file_index_.apply_max_versions_enforced(*static_cast<const MaxVersionsEnforcedEntry*>(body));
-                }
-                break;
-            }
-            case ManifestEntryType::TABLE_CREATED: {
-                if (body_length >= sizeof(TableCreatedEntry)) {
-                    file_index_.apply_table_created(*static_cast<const TableCreatedEntry*>(body));
                 }
                 break;
             }
@@ -165,21 +153,6 @@ RegistryServer* RegistryClient::find_leader() {
     return nullptr;
 }
 
-uint64_t RegistryClient::next_logical_file_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_logical_file_id() : 1000;
-}
-
-uint64_t RegistryClient::next_file_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_file_id() : 1000;
-}
-
-uint64_t RegistryClient::next_session_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_session_id() : 1;
-}
-
 std::pair<bool, uint64_t> RegistryClient::append_entry(
     uint32_t entry_type, const void* body, uint16_t body_length)
 {
@@ -225,13 +198,6 @@ std::vector<LogicalFileEntry> RegistryClient::list_files(uint16_t table_id, uint
     return {};
 }
 
-std::vector<LogicalFileEntry> RegistryClient::all_files() {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().all_files();
-    }
-    return {};
-}
-
 std::vector<uint32_t> RegistryClient::get_confirmed_chunks(uint64_t session_id) {
     if (auto* leader = find_leader()) {
         return leader->file_index().get_confirmed_chunks(session_id);
@@ -247,15 +213,9 @@ void RegistryClient::report_node_health(uint16_t node_id, NodeState state) {
 }
 
 std::unordered_map<uint16_t, NodeState> RegistryClient::get_cluster_health() {
+    // Query from any server (all have replicated state via Raft)
     for (auto* server : servers_) {
         return server->file_index().get_node_health();
-    }
-    return {};
-}
-
-std::vector<TableEntry> RegistryClient::get_tables() {
-    for (auto* server : servers_) {
-        return server->file_index().get_tables();
     }
     return {};
 }

@@ -57,8 +57,7 @@ struct ChunkConfirmedEntry {
     uint64_t chunk_size_actual;    // Actual bytes stored
     uint32_t chunk_checksum;       // CRC32C of plaintext chunk
     uint8_t  replica_count;        // Number of replicas
-    uint64_t segment_offset;       // Offset in segment file (header offset)
-    char     segment_file[256];    // Path to segment file
+    // Replicas follow: (node_id: uint16_t, offset: uint64_t) * replica_count
 };
 
 /**
@@ -71,23 +70,12 @@ struct VersionCompleteEntry {
     uint32_t content_checksum;     // CRC32C of full file
     uint64_t total_size;
     uint32_t chunk_count;
-    uint64_t created_at_us;
 };
 
 /**
  * VERSION_DELETED: Version marked for deletion (cleanup may be async).
  */
 struct VersionDeletedEntry {
-    uint64_t file_id;
-    uint64_t logical_file_id;
-    uint32_t version_number;
-};
-
-/**
- * VERSION_RECLAIMED: Compaction has removed the physical data.
- * Transitions MARKED_DELETED → DELETED.
- */
-struct VersionReclaimedEntry {
     uint64_t file_id;
     uint64_t logical_file_id;
     uint32_t version_number;
@@ -165,22 +153,6 @@ struct ChunkLocationUpdatedEntry {
     uint16_t node_id;
     std::string segment_file;    // New segment path
     uint64_t offset;             // New offset in segment
-};
-
-/**
- * TABLE_CREATED: A new file table was created dynamically.
- * Tables are replicated via Raft like all other manifest entries.
- */
-struct TableCreatedEntry {
-    uint32_t table_id;
-    uint32_t group_id;
-    char     name[64];
-    uint64_t chunk_size;
-    uint8_t  replication_factor;
-    uint8_t  encryption;
-    uint32_t max_versions;
-    uint32_t file_expires_in_days;
-    uint8_t  expiry_granularity;
 };
 
 // Phase 3+ entry types (declared for forward compatibility)

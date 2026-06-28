@@ -1,8 +1,6 @@
 #include "manifest/file_index.h"
 
 #include <algorithm>
-#include <mutex>
-#include "common/clock.h"
 
 namespace filegroup {
 
@@ -10,14 +8,6 @@ FileIndex::FileIndex() = default;
 
 void FileIndex::apply_session_open(const SessionOpenEntry& e) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    
-    // Update high-water ID counters (for recovery replay)
-    if (e.logical_file_id >= next_logical_file_id_.load())
-        next_logical_file_id_.store(e.logical_file_id + 1);
-    if (e.file_id >= next_file_id_.load())
-        next_file_id_.store(e.file_id + 1);
-    if (e.session_id >= next_session_id_.load())
-        next_session_id_.store(e.session_id + 1);
     
     // Create or get file entry
     auto it = files_.find(e.logical_file_id);
@@ -80,24 +70,10 @@ void FileIndex::apply_chunk_confirmed(const ChunkConfirmedEntry& e) {
                 chunk.chunk_index = e.chunk_index;
                 chunk.chunk_size_actual = e.chunk_size_actual;
                 chunk.chunk_checksum = e.chunk_checksum;
-                if (e.segment_file[0]) {
-                    ReplicaLocation rep;
-                    rep.segment_file = e.segment_file;
-                    rep.offset = e.segment_offset;
-                    rep.state = ReplicaState::WRITTEN;
-                    chunk.replicas.push_back(rep);
-                }
                 ver.chunks.push_back(chunk);
             } else {
                 cit->chunk_size_actual = e.chunk_size_actual;
                 cit->chunk_checksum = e.chunk_checksum;
-                if (e.segment_file[0] && cit->replicas.empty()) {
-                    ReplicaLocation rep;
-                    rep.segment_file = e.segment_file;
-                    rep.offset = e.segment_offset;
-                    rep.state = ReplicaState::WRITTEN;
-                    cit->replicas.push_back(rep);
-                }
             }
             ver.total_size += e.chunk_size_actual;
             break;
@@ -118,27 +94,11 @@ void FileIndex::apply_version_complete(const VersionCompleteEntry& e) {
     vit->second.content_checksum = e.content_checksum;
     vit->second.total_size = e.total_size;
     vit->second.chunk_count = e.chunk_count;
-    vit->second.created_at_us = now_us();
     
     fit->second.latest_complete_version = e.version_number;
 }
 
 void FileIndex::apply_version_deleted(const VersionDeletedEntry& e) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    
-    auto fit = files_.find(e.logical_file_id);
-    if (fit == files_.end()) return;
-    
-    auto vit = fit->second.versions.find(e.version_number);
-    if (vit == fit->second.versions.end()) return;
-    
-    // Don't resurrect a fully-deleted version back to MARKED_DELETED
-    if (vit->second.state == VersionState::DELETED) return;
-    
-    vit->second.state = VersionState::MARKED_DELETED;
-}
-
-void FileIndex::apply_version_reclaimed(const VersionReclaimedEntry& e) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     
     auto fit = files_.find(e.logical_file_id);
@@ -168,21 +128,7 @@ void FileIndex::apply_session_timed_out(const SessionTimedOutEntry& e) {
     auto sit = sessions_.find(e.session_id);
     if (sit == sessions_.end()) return;
     
-    uint64_t logical_file_id = sit->second;
     sessions_.erase(sit);
-
-    // Update version state so compaction can reclaim its chunks
-    auto fit = files_.find(logical_file_id);
-    if (fit != files_.end()) {
-        auto vit = fit->second.versions.begin();
-        while (vit != fit->second.versions.end()) {
-            if (vit->second.file_id == e.file_id && vit->second.state == VersionState::UPLOADING) {
-                vit->second.state = VersionState::SESSION_TIMED_OUT;
-                break;
-            }
-            ++vit;
-        }
-    }
 }
 
 void FileIndex::apply_chunk_delete_confirmed(const ChunkDeleteConfirmedEntry& e) {
@@ -297,20 +243,6 @@ std::vector<LogicalFileEntry> FileIndex::list_files(uint16_t table_id, uint32_t 
     return result;
 }
 
-std::vector<LogicalFileEntry> FileIndex::all_files() const {
-    std::vector<LogicalFileEntry> result;
-    std::shared_lock<std::shared_mutex> lock(mutex_);
-    for (const auto& p : files_) {
-        result.push_back(p.second);
-    }
-    return result;
-}
-
-std::unordered_map<uint16_t, NodeState> FileIndex::get_node_health() const {
-    std::shared_lock<std::shared_mutex> lock(mutex_);
-    return node_health_;
-}
-
 uint64_t FileIndex::next_logical_file_id() {
     return next_logical_file_id_.fetch_add(1);
 }
@@ -321,32 +253,6 @@ uint64_t FileIndex::next_file_id() {
 
 uint64_t FileIndex::next_session_id() {
     return next_session_id_.fetch_add(1);
-}
-
-void FileIndex::apply_table_created(const TableCreatedEntry& e) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    TableEntry t;
-    t.table_id = e.table_id;
-    t.group_id = e.group_id;
-    t.name = e.name; // char[64] to std::string
-    t.chunk_size = e.chunk_size;
-    t.replication_factor = e.replication_factor;
-    t.encryption = static_cast<EncryptionAlgo>(e.encryption);
-    t.max_versions = e.max_versions;
-    t.file_expires_in_days = e.file_expires_in_days;
-    t.expiry_granularity = static_cast<ExpiryGranularity>(e.expiry_granularity);
-    // Replace if same (group_id, table_id) already exists, else append
-    for (auto& existing : tables_) {
-        if (existing.group_id == t.group_id && existing.table_id == t.table_id) {
-            existing = std::move(t);
-            return;
-        }
-    }    tables_.push_back(std::move(t));
-}
-
-std::vector<TableEntry> FileIndex::get_tables() const {
-    std::shared_lock<std::shared_mutex> lock(mutex_);
-    return tables_;
 }
 
 }  // namespace filegroup

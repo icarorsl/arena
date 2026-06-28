@@ -1,192 +1,301 @@
 #include "engine/engine_service.h"
+
 #include <algorithm>
-#include <cstring>
-#include <dirent.h>
-#include <iostream>
-#include <set>
-#include <sys/stat.h>
-#include "common/clock.h"
-#include "segment/segment.h"
+
 namespace filegroup {
-EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::string& dr):config_(c),metrics_(m){
- mkdir(dr.c_str(), 0755); // ensure parent dir exists
- for(size_t i=0;i<c.storage_nodes.size();i++){auto& nc=c.storage_nodes[i];
-  auto s=std::make_unique<StorageServer>(nc.node_id,dr+"/node_"+std::to_string(nc.node_id));
-  auto cl=std::make_unique<StorageClient>(s.get());ss_.push_back(std::move(s));sc_.push_back(std::move(cl));}
- rs_=std::make_unique<RegistryServer>(1,std::vector<uint32_t>{1},dr+"/raft.log",0);
- rc_=std::make_unique<RegistryClient>(std::vector<RegistryServer*>{rs_.get()});
- rs_->wait_for_leader(3000000);
- std::vector<StorageClient*> cp;for(auto&x:sc_)cp.push_back(x.get());
- engine_=std::make_unique<Engine>(c,rc_.get(),cp);
- engine_->rebuild_chunk_locations();
- heartbeat_=std::make_unique<HeartbeatService>(cp,rc_.get(),5);
- heartbeat_->start();
- expiry_=std::make_unique<ExpiryService>(rc_.get(),60);
- expiry_->start();
- compaction_=std::make_unique<CompactionService>(*engine_,rc_.get(),cp,60);
- compaction_->start();
-}
-EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
- R r;try{auto s=engine_->open_session(gid,tid,lid,ts,ec,fed);
-  r.success=true;r.session_id=s.session_id;r.file_id=s.file_id;r.logical_file_id=s.logical_file_id;
-  r.version_number=s.version_number;r.resolved_chunk_size=s.resolved_chunk_size;r.encryption=s.resolved_encryption;
-  if(metrics_) metrics_->inc_counter("file_upload_sessions_total");
- }catch(const std::exception& e){r.error=e.what();}return r;
-}
-EngineServer::WR EngineServer::write_chunk(uint64_t sid,uint32_t ci,const std::vector<uint8_t>& d){
- WR r;auto* s=engine_->get_session(sid);
- if(s&&s->confirmed_chunks.count(ci)){r.success=true;r.already_confirmed=true;return r;}
- auto t0=now_us();
- bool ok=engine_->write_chunk(sid,ci,d.data(),d.size());r.success=ok;if(!ok)r.error="write failed";
- if(metrics_){if(ok)metrics_->inc_chunks_confirmed(); metrics_->observe_chunk_write_latency_ms((now_us()-t0)/1000.0);}
- return r;
-}
-EngineServer::CR EngineServer::complete_session(uint64_t sid,uint32_t cs){
- CR r;std::string note;bool ok=engine_->complete_session(sid,cs,&note);r.success=ok;
- if(ok){auto* s=engine_->get_session(sid);if(s){r.logical_file_id=s->logical_file_id;r.file_id=s->file_id;r.version_number=s->version_number;}
-  if(!note.empty())r.error=note;
-  if(metrics_) metrics_->inc_counter("file_upload_completions_total");}
- else r.error="complete failed";return r;
-}
-EngineServer::RR EngineServer::resume_session(uint64_t sid){
- RR r;r.session_id=sid;auto* s=engine_->get_session(sid);
- if(!s){r.error="not found";return r;}
- r.success=true;r.file_id=s->file_id;r.logical_file_id=s->logical_file_id;r.version_number=s->version_number;
- r.resolved_chunk_size=s->resolved_chunk_size;r.encryption=s->resolved_encryption;
- r.confirmed_chunks=engine_->resume_session(sid);return r;
-}
-EngineServer::RFR EngineServer::read_file(uint64_t lid,uint32_t vn){RFR r;
- auto t0=now_us();r.data=engine_->read_file(lid,vn);
- if(r.data.empty())r.error="not found";
- else if(metrics_){metrics_->inc_counter("file_read_total");metrics_->observe_chunk_read_latency_ms((now_us()-t0)/1000.0);}
- return r;}
 
-bool EngineServer::read_file_stream(uint64_t lid,uint32_t vn,
-    std::function<void(const uint8_t*,size_t)> callback){
- const VersionEntry* ve=vn>0?rc_->get_version(lid,vn):rc_->get_latest_complete(lid);
- if(!ve||(ve->state!=VersionState::COMPLETE&&ve->state!=VersionState::SUPERSEDED&&ve->state!=VersionState::MARKED_DELETED))return false;
- for(uint32_t ci=0;ci<ve->chunk_count;ci++){
-  std::vector<uint8_t> chunk;
-  if(!engine_->read_single_chunk(lid,vn,ci,chunk))return false;
-  callback(chunk.data(),chunk.size());
- }
- return true;
-}
-EngineServer::RCR EngineServer::read_chunk(uint64_t lid,uint32_t vn,uint32_t ci){RCR r;r.data=engine_->read_chunk(lid,vn,ci);if(r.data.empty())r.error="not found";return r;}
-EngineServer::RRR EngineServer::read_range(uint64_t lid,uint32_t vn,uint64_t offset_bytes,uint64_t length_bytes){RRR r;
- auto t0=now_us();r.data=engine_->read_range(lid,vn,offset_bytes,length_bytes);
- if(r.data.empty())r.error="not found";
- else if(metrics_){metrics_->inc_counter("file_read_range_total");metrics_->observe_chunk_read_latency_ms((now_us()-t0)/1000.0);}
- return r;}
-EngineServer::SR EngineServer::delete_file(uint64_t lid){
- auto* f=rc_->get_file(lid);
- if(!f)return{false,"file not found"};
- // Collect version numbers before writing (avoid iterator invalidation)
- std::vector<uint32_t> vns;for(auto&[vn,_]:f->versions)vns.push_back(vn);
- for(auto vn:vns){
-  auto vit=f->versions.find(vn);
-  if(vit==f->versions.end())continue;
-  VersionDeletedEntry e;e.file_id=vit->second.file_id;e.logical_file_id=lid;e.version_number=vn;
-  auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&e,sizeof(e));(void)lsn;
-  if(!ok)return{false,"delete failed at version "+std::to_string(vn)};
- }
- return{true,""};
-}
-EngineServer::SR EngineServer::delete_version(uint64_t lid,uint32_t vn){
- auto* f=rc_->get_file(lid);
- if(!f)return{false,"file not found"};
- auto vit=f->versions.find(vn);
- if(vit==f->versions.end())return{false,"version not found"};
- VersionDeletedEntry e;e.file_id=vit->second.file_id;e.logical_file_id=lid;e.version_number=vn;
- auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::VERSION_DELETED,&e,sizeof(e));(void)lsn;
- return{ok,ok?"":"delete failed"};
-}
-EngineServer::FIR EngineServer::get_file_info(uint64_t lid){
- FIR r;r.logical_file_id=lid;auto* f=rc_->get_file(lid);
- if(!f){r.error="not found";return r;}
- r.success=true;r.table_id=f->table_id;r.group_id=f->group_id;r.latest_version=f->latest_complete_version;
- auto vit=f->versions.find(f->latest_complete_version);
- if(vit!=f->versions.end()){r.total_size=vit->second.total_size;r.created_at_us=vit->second.created_at_us;r.state=(vit->second.state==VersionState::DELETED||vit->second.state==VersionState::MARKED_DELETED)?FileState::DELETED:FileState::ACTIVE;}
- return r;
-}
-std::vector<EngineServer::VIR> EngineServer::list_versions(uint64_t lid){
- std::vector<VIR> r;auto* f=rc_->get_file(lid);if(!f)return r;
- for(auto&[vn,ver]:f->versions){VIR v;v.file_id=ver.file_id;v.version_number=ver.version_number;
-  v.state=ver.state;v.total_size=ver.total_size;v.chunk_count=ver.chunk_count;
-  v.expires_at_us=ver.expires_at;v.encryption=ver.encryption;v.created_at_us=ver.created_at_us;r.push_back(v);}
- return r;
-}
-std::vector<EngineServer::FIR> EngineServer::list_files(uint32_t gid,uint32_t tid){
- std::vector<FIR> r;auto fs=rc_->list_files((uint16_t)tid,gid);
- for(auto&f:fs){
-  FIR i;i.success=true;i.logical_file_id=f.logical_file_id;i.table_id=f.table_id;i.group_id=f.group_id;i.latest_version=f.latest_complete_version;
-  auto vit=f.versions.find(f.latest_complete_version);
-  if(vit!=f.versions.end()){i.total_size=vit->second.total_size;i.state=(vit->second.state==VersionState::DELETED||vit->second.state==VersionState::MARKED_DELETED)?FileState::DELETED:FileState::ACTIVE;i.created_at_us=vit->second.created_at_us;}
-  r.push_back(i);}
- return r;
-}
-EngineServer::SR EngineServer::cancel_session(uint64_t sid){auto* s=engine_->get_session(sid);if(!s)return{false,"not found"};return{true,""};}
-bool EngineServer::ping()const{return true;}
+// ============================================================================
+// EngineServer
+// ============================================================================
 
-std::vector<EngineServer::TIR> EngineServer::get_tables(){
- std::vector<TIR> r;std::set<uint32_t> seen;
- // Dynamic tables (from Raft-replicated TABLE_CREATED entries)
- auto ts=rc_->get_tables();
- for(auto&t:ts){TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);seen.insert(t.table_id);}
- // Static config tables (fallback for tables not yet created dynamically)
- for(auto&t:config_.tables){if(seen.count(t.table_id))continue;TIR i;i.table_id=t.table_id;i.group_id=t.group_id;i.name=t.name;i.chunk_size=t.chunk_size;i.replication_factor=t.replication_factor;i.encryption=t.encryption;i.max_versions=t.max_versions;i.file_expires_in_days=t.file_expires_in_days;i.expiry_granularity=t.expiry_granularity;r.push_back(i);}
- return r;
-}
-
-EngineServer::SR EngineServer::create_table(uint32_t tid,uint32_t gid,const std::string& name,uint32_t fed,uint32_t mv){
- TableCreatedEntry e{};e.table_id=tid;e.group_id=gid;strncpy(e.name,name.c_str(),sizeof(e.name)-1);
- e.file_expires_in_days=fed;e.max_versions=mv;
- auto[ok,lsn]=rc_->append_entry((uint32_t)ManifestEntryType::TABLE_CREATED,&e,sizeof(e));(void)lsn;
- return{ok,ok?"":"create failed"};
-}
-
-std::vector<EngineServer::SIR> EngineServer::list_segments(){
- std::vector<SIR> r;
- for(auto& s:ss_){
-  auto dir=s->data_dir();
-  DIR* dp=opendir(dir.c_str());
-  if(!dp)continue;
-  struct dirent* de;
-  while((de=readdir(dp))!=nullptr){
-   std::string name(de->d_name);
-   if(name.size()<4||(name.substr(name.size()-4)!=".seg"))continue;
-   std::string path=dir+"/"+name;
-   try{
-    Segment seg(path);
-    auto& h=seg.header();
-    SIR si;
-    si.file_name=name;
-    si.node_id=h.node_id;
-    si.group_id=h.group_id;
-    si.table_id=h.table_id;
-    // Fallback: parse filename {type}_{node}_{group}_{table}_{seq}.seg
-    if(si.node_id==0&&si.group_id==0&&si.table_id==0){
-     // e.g. "page_1_1_10_0.seg" or "seg_1_1_10_0.seg"
-     auto u1=name.find('_'); if(u1==std::string::npos)continue;
-     auto u2=name.find('_',u1+1); if(u2==std::string::npos)continue;
-     auto u3=name.find('_',u2+1); if(u3==std::string::npos)continue;
-     try{
-      si.node_id=(uint32_t)std::stoul(name.substr(u1+1,u2-u1-1));
-      si.group_id=(uint32_t)std::stoul(name.substr(u2+1,u3-u2-1));
-      auto u4=name.find('_',u3+1);
-      si.table_id=(uint32_t)std::stoul(name.substr(u3+1,(u4!=std::string::npos?u4:name.size()-4)-u3-1));
-     }catch(...){}
+EngineServer::EngineServer(const ClusterConfig& config, const std::string& data_root)
+    : config_(config)
+{
+    // Set up storage servers (one per storage node in config)
+    for (size_t i = 0; i < config.storage_nodes.size(); i++) {
+        auto& node_config = config.storage_nodes[i];
+        auto server = std::make_unique<StorageServer>(
+            node_config.node_id,
+            data_root + "/node_" + std::to_string(node_config.node_id));
+        auto client = std::make_unique<StorageClient>(server.get());
+        storage_servers_.push_back(std::move(server));
+        storage_clients_.push_back(std::move(client));
     }
-    si.chunk_count=h.chunk_count;
-    si.total_size=h.write_offset;
-    si.used_bytes=h.total_data_bytes;
-    si.created_at_us=h.created_at_us;
-    si.is_page=(h.segment_type==(uint8_t)SegmentType::PAGE);
-    r.push_back(si);
-   }catch(...){}
-  }
-  closedir(dp);
- }
- return r;
+
+    // Set up in-process registry (single-node for Phase 1, 3-node for production)
+    // For Phase 1 demo: single registry node
+    std::vector<uint32_t> registry_peers = {1};
+    registry_server_ = std::make_unique<RegistryServer>(1, registry_peers,
+        data_root + "/raft.log", 0);
+
+    // Wire up in-process Raft transport (single node, no peers to wire)
+    // In a 3-node setup, we'd wire them together here
+
+    // Create registry client
+    registry_client_ = std::make_unique<RegistryClient>(
+        std::vector<RegistryServer*>{registry_server_.get()});
+
+    // Wait for Raft leader election (single node should become leader quickly)
+    registry_server_->wait_for_leader(3'000'000); // 3 second timeout
+
+    // Create the Engine with storage clients
+    std::vector<StorageClient*> client_ptrs;
+    for (auto& c : storage_clients_) client_ptrs.push_back(c.get());
+    engine_ = std::make_unique<Engine>(config, registry_client_.get(), client_ptrs);
 }
+
+// ============================================================================
+// Upload API
+// ============================================================================
+
+EngineServer::OpenSessionResult EngineServer::open_session(
+    uint32_t group_id, uint32_t table_id,
+    uint64_t logical_file_id, uint64_t total_size,
+    uint32_t expected_chunks, uint32_t file_expires_in_days)
+{
+    OpenSessionResult result;
+
+    try {
+        auto session = engine_->open_session(group_id, table_id,
+            logical_file_id, total_size, expected_chunks, file_expires_in_days);
+
+        result.success = true;
+        result.session_id = session.session_id;
+        result.file_id = session.file_id;
+        result.logical_file_id = session.logical_file_id;
+        result.version_number = session.version_number;
+        result.resolved_chunk_size = session.resolved_chunk_size;
+        result.encryption = session.resolved_encryption;
+    } catch (const std::exception& e) {
+        result.error = e.what();
+    }
+
+    return result;
 }
+
+EngineServer::WriteChunkResult EngineServer::write_chunk(
+    uint64_t session_id, uint32_t chunk_index, const std::vector<uint8_t>& data)
+{
+    WriteChunkResult result;
+
+    // Check if already confirmed (idempotency)
+    auto* session = engine_->get_session(session_id);
+    if (session && session->confirmed_chunks.count(chunk_index)) {
+        result.success = true;
+        result.already_confirmed = true;
+        return result;
+    }
+
+    bool ok = engine_->write_chunk(session_id, chunk_index,
+                                    data.data(), data.size());
+    result.success = ok;
+    if (!ok) result.error = "Write chunk failed";
+    return result;
+}
+
+EngineServer::CompleteSessionResult EngineServer::complete_session(
+    uint64_t session_id, uint32_t content_checksum)
+{
+    CompleteSessionResult result;
+
+    bool ok = engine_->complete_session(session_id, content_checksum);
+    result.success = ok;
+
+    if (ok) {
+        auto* session = engine_->get_session(session_id);
+        if (session) {
+            result.logical_file_id = session->logical_file_id;
+            result.file_id = session->file_id;
+            result.version_number = session->version_number;
+        }
+    } else {
+        result.error = "Complete session failed";
+    }
+
+    return result;
+}
+
+EngineServer::ResumeSessionResult EngineServer::resume_session(uint64_t session_id)
+{
+    ResumeSessionResult result;
+    result.session_id = session_id;
+
+    auto* session = engine_->get_session(session_id);
+    if (!session) {
+        result.error = "Session not found";
+        return result;
+    }
+
+    result.success = true;
+    result.file_id = session->file_id;
+    result.logical_file_id = session->logical_file_id;
+    result.version_number = session->version_number;
+    result.resolved_chunk_size = session->resolved_chunk_size;
+    result.encryption = session->resolved_encryption;
+
+    auto chunks = engine_->resume_session(session_id);
+    result.confirmed_chunks = std::move(chunks);
+
+    return result;
+}
+
+// ============================================================================
+// Read API
+// ============================================================================
+
+EngineServer::ReadFileResponse EngineServer::read_file(
+    uint64_t logical_file_id, uint32_t version_number)
+{
+    ReadFileResponse result;
+    result.data = engine_->read_file(logical_file_id, version_number);
+    if (result.data.empty()) {
+        result.error = "File not found or read failed";
+    }
+    return result;
+}
+
+EngineServer::ReadChunkResponse EngineServer::read_chunk(
+    uint64_t logical_file_id, uint32_t version_number, uint32_t chunk_index)
+{
+    ReadChunkResponse result;
+    result.data = engine_->read_chunk(logical_file_id, version_number, chunk_index);
+    if (result.data.empty()) {
+        result.error = "Chunk not found or read failed";
+    }
+    return result;
+}
+
+// ============================================================================
+// Management API
+// ============================================================================
+
+EngineServer::SimpleResult EngineServer::delete_file(uint64_t logical_file_id)
+{
+    // Write FILE_DELETED to manifest via registry
+    FileDeletedEntry entry;
+    entry.logical_file_id = logical_file_id;
+    auto [success, lsn] = registry_client_->append_entry(
+        static_cast<uint32_t>(ManifestEntryType::FILE_DELETED), &entry, sizeof(entry));
+
+    (void)lsn;
+    return {success, success ? "" : "Delete file failed"};
+}
+
+EngineServer::SimpleResult EngineServer::delete_version(
+    uint64_t logical_file_id, uint32_t version_number)
+{
+    VersionDeletedEntry entry;
+    entry.file_id = 0; // Registry resolves this
+    entry.logical_file_id = logical_file_id;
+    entry.version_number = version_number;
+    auto [success, lsn] = registry_client_->append_entry(
+        static_cast<uint32_t>(ManifestEntryType::VERSION_DELETED), &entry, sizeof(entry));
+
+    (void)lsn;
+    return {success, success ? "" : "Delete version failed"};
+}
+
+EngineServer::FileInfoResult EngineServer::get_file_info(uint64_t logical_file_id)
+{
+    FileInfoResult result;
+    result.logical_file_id = logical_file_id;
+
+    auto* file = registry_client_->get_file(logical_file_id);
+    if (!file) {
+        result.error = "File not found";
+        return result;
+    }
+
+    result.success = true;
+    result.table_id = file->table_id;
+    result.group_id = file->group_id;
+    result.latest_version = file->latest_complete_version;
+
+    return result;
+}
+
+std::vector<EngineServer::VersionInfoResult> EngineServer::list_versions(
+    uint64_t logical_file_id)
+{
+    std::vector<VersionInfoResult> result;
+
+    auto* file = registry_client_->get_file(logical_file_id);
+    if (!file) return result;
+
+    for (auto& [vn, ver] : file->versions) {
+        VersionInfoResult v;
+        v.file_id = ver.file_id;
+        v.version_number = ver.version_number;
+        v.state = ver.state;
+        v.total_size = ver.total_size;
+        v.chunk_count = ver.chunk_count;
+        v.expires_at_us = ver.expires_at;
+        v.encryption = ver.encryption;
+        result.push_back(v);
+    }
+
+    return result;
+}
+
+std::vector<EngineServer::FileInfoResult> EngineServer::list_files(
+    uint32_t group_id, uint32_t table_id)
+{
+    std::vector<FileInfoResult> result;
+
+    auto files = registry_client_->list_files(static_cast<uint16_t>(table_id), group_id);
+    for (auto& f : files) {
+        FileInfoResult info;
+        info.success = true;
+        info.logical_file_id = f.logical_file_id;
+        info.table_id = f.table_id;
+        info.group_id = f.group_id;
+        info.latest_version = f.latest_complete_version;
+        result.push_back(info);
+    }
+
+    return result;
+}
+
+EngineServer::SimpleResult EngineServer::cancel_session(uint64_t session_id)
+{
+    auto* session = engine_->get_session(session_id);
+    if (!session) return {false, "Session not found"};
+
+    // Write SESSION_TIMED_OUT to manifest
+    SessionTimedOutEntry entry;
+    entry.session_id = session_id;
+    entry.file_id = session->file_id;
+    registry_client_->append_entry(
+        static_cast<uint32_t>(ManifestEntryType::SESSION_TIMED_OUT), &entry, sizeof(entry));
+
+    return {true, ""};
+}
+
+// ============================================================================
+// Health
+// ============================================================================
+
+bool EngineServer::ping() const {
+    return true;
+}
+
+// ============================================================================
+// Auth
+// ============================================================================
+
+bool EngineServer::validate_api_key(uint32_t group_id, const std::string& permission) const {
+    // Phase 1: Simple validation (gRPC interceptor will handle this in Phase 2)
+    // Check if any API key in config has access to this group
+    for (auto& key : config_.api_keys) {
+        for (auto& g : key.groups) {
+            if (g == group_id) {
+                for (auto& p : key.permissions) {
+                    if (p == permission || p == "admin") return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+}  // namespace filegroup

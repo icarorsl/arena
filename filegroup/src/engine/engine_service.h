@@ -1,59 +1,149 @@
 #pragma once
+
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+
 #include "config/config.h"
 #include "engine/engine.h"
 #include "engine/session.h"
-#include "metrics/metrics.h"
 #include "registry/registry_service.h"
 #include "storage/storage_node_service.h"
-#include "heartbeat/heartbeat_service.h"
-#include "expiry/expiry_service.h"
-#include "compaction/compaction_service.h"
+
 namespace filegroup {
+
+// ============================================================================
+// EngineServer — Client-facing API (Phase 1: in-process, Phase 2+: gRPC)
+//
+// Wraps the Engine class and provides the full API:
+//   - Upload: OpenSession, WriteChunk, CompleteSession, ResumeSession
+//   - Read: ReadFile, ReadChunk
+//   - Management: DeleteFile, DeleteVersion, ListFiles, ListVersions, GetFileInfo
+//   - Session: CancelSession
+//
+// Authentication: validates x-api-key against config's api_keys list.
+// mTLS is handled at the transport layer (Phase 2: gRPC + OpenSSL).
+// ============================================================================
+
 class EngineServer {
 public:
-    EngineServer(const ClusterConfig& config, MetricsServer* metrics=nullptr, const std::string& data_root="/tmp/filegroup");
-    struct R { bool success=false; uint64_t session_id=0,file_id=0,logical_file_id=0,version_number=0,resolved_chunk_size=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; std::string error; };
-    R open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts=0,uint32_t ec=0,uint32_t fed=0);
-    struct WR { bool success=false,already_confirmed=false; std::string error; };
-    WR write_chunk(uint64_t sid,uint32_t ci,const std::vector<uint8_t>& d);
-    struct CR { bool success=false; uint64_t logical_file_id=0,file_id=0,version_number=0; std::string error; };
-    CR complete_session(uint64_t sid,uint32_t cs=0);
-    struct RR { bool success=false; uint64_t session_id=0,file_id=0,logical_file_id=0,version_number=0,resolved_chunk_size=0; std::vector<uint32_t> confirmed_chunks; EncryptionAlgo encryption=EncryptionAlgo::NONE; std::string error; };
-    RR resume_session(uint64_t sid);
-    struct RFR { std::vector<uint8_t> data; std::string error; };
-    RFR read_file(uint64_t lid,uint32_t vn=0);
-    // Streaming read: calls callback for each chunk. Returns true on success.
-    bool read_file_stream(uint64_t lid, uint32_t vn, std::function<void(const uint8_t*,size_t)> callback);
-    struct RCR { std::vector<uint8_t> data; std::string error; };
-    RCR read_chunk(uint64_t lid,uint32_t vn,uint32_t ci);
-    struct RRR { std::vector<uint8_t> data; std::string error; };
-    RRR read_range(uint64_t lid,uint32_t vn,uint64_t offset_bytes,uint64_t length_bytes);
-    struct SR { bool success=false; std::string error; };
-    SR delete_file(uint64_t lid),delete_version(uint64_t lid,uint32_t vn),cancel_session(uint64_t sid);
-    struct FIR { bool success=false; uint64_t logical_file_id=0,total_size=0,created_at_us=0; uint32_t table_id=0,group_id=0,latest_version=0; FileState state=FileState::ACTIVE; std::string error; };
-    FIR get_file_info(uint64_t lid);
-    struct VIR { uint64_t file_id=0; uint32_t version_number=0; VersionState state=VersionState::UPLOADING; uint64_t total_size=0,expires_at_us=0,created_at_us=0; uint32_t chunk_count=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; };
-    struct TIR { uint32_t table_id=0,group_id=0; std::string name; uint64_t chunk_size=0; uint8_t replication_factor=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; uint32_t max_versions=0,file_expires_in_days=0; ExpiryGranularity expiry_granularity=ExpiryGranularity::UNSET; };
-    std::vector<VIR> list_versions(uint64_t lid);
-    std::vector<FIR> list_files(uint32_t gid,uint32_t tid);
-    std::vector<TIR> get_tables();
-    SR create_table(uint32_t tid,uint32_t gid,const std::string& name,uint32_t fed=0,uint32_t mv=0);
-    struct SIR { std::string file_name; uint32_t node_id=0,group_id=0,table_id=0,chunk_count=0; uint64_t total_size=0,used_bytes=0,created_at_us=0; bool is_page=false; };
-    std::vector<SIR> list_segments();
+    /// Create the engine server.
+    /// @param config Cluster configuration (groups, tables, api_keys, etc.)
+    /// @param data_root Root directory for segment storage
+    EngineServer(const ClusterConfig& config, const std::string& data_root = "/tmp/filegroup");
+
+    // ---- Upload ----
+
+    struct OpenSessionResult {
+        bool success = false;
+        uint64_t session_id = 0;
+        uint64_t file_id = 0;
+        uint64_t logical_file_id = 0;
+        uint32_t version_number = 0;
+        uint64_t resolved_chunk_size = 0;
+        EncryptionAlgo encryption = EncryptionAlgo::NONE;
+        std::string error;
+    };
+    OpenSessionResult open_session(uint32_t group_id, uint32_t table_id,
+                                    uint64_t logical_file_id, uint64_t total_size = 0,
+                                    uint32_t expected_chunks = 0, uint32_t file_expires_in_days = 0);
+
+    struct WriteChunkResult {
+        bool success = false;
+        bool already_confirmed = false;
+        std::string error;
+    };
+    WriteChunkResult write_chunk(uint64_t session_id, uint32_t chunk_index,
+                                  const std::vector<uint8_t>& data);
+
+    struct CompleteSessionResult {
+        bool success = false;
+        uint64_t logical_file_id = 0;
+        uint64_t file_id = 0;
+        uint32_t version_number = 0;
+        std::string error;
+    };
+    CompleteSessionResult complete_session(uint64_t session_id, uint32_t content_checksum = 0);
+
+    struct ResumeSessionResult {
+        bool success = false;
+        uint64_t session_id = 0;
+        uint64_t file_id = 0;
+        uint64_t logical_file_id = 0;
+        uint32_t version_number = 0;
+        uint64_t resolved_chunk_size = 0;
+        std::vector<uint32_t> confirmed_chunks;
+        EncryptionAlgo encryption = EncryptionAlgo::NONE;
+        std::string error;
+    };
+    ResumeSessionResult resume_session(uint64_t session_id);
+
+    // ---- Read ----
+
+    struct ReadFileResponse {
+        std::vector<uint8_t> data;
+        std::string error;
+    };
+    ReadFileResponse read_file(uint64_t logical_file_id, uint32_t version_number = 0);
+
+    struct ReadChunkResponse {
+        std::vector<uint8_t> data;
+        std::string error;
+    };
+    ReadChunkResponse read_chunk(uint64_t logical_file_id, uint32_t version_number,
+                                  uint32_t chunk_index);
+
+    // ---- Management ----
+
+    struct SimpleResult {
+        bool success = false;
+        std::string error;
+    };
+    SimpleResult delete_file(uint64_t logical_file_id);
+    SimpleResult delete_version(uint64_t logical_file_id, uint32_t version_number);
+
+    struct FileInfoResult {
+        bool success = false;
+        uint64_t logical_file_id = 0;
+        uint32_t table_id = 0;
+        uint32_t group_id = 0;
+        uint32_t latest_version = 0;
+        FileState state = FileState::ACTIVE;
+        std::string error;
+    };
+    FileInfoResult get_file_info(uint64_t logical_file_id);
+
+    struct VersionInfoResult {
+        uint64_t file_id = 0;
+        uint32_t version_number = 0;
+        VersionState state = VersionState::UPLOADING;
+        uint64_t total_size = 0;
+        uint32_t chunk_count = 0;
+        uint64_t expires_at_us = 0;
+        EncryptionAlgo encryption = EncryptionAlgo::NONE;
+    };
+    std::vector<VersionInfoResult> list_versions(uint64_t logical_file_id);
+    std::vector<FileInfoResult> list_files(uint32_t group_id, uint32_t table_id);
+
+    SimpleResult cancel_session(uint64_t session_id);
+
+    // ---- Health ----
     bool ping() const;
-    Engine& engine(){return *engine_;}
+
+    // ---- Accessors ----
+    Engine& engine() { return *engine_; }
+    const ClusterConfig& config() const { return config_; }
+
 private:
-    ClusterConfig config_; MetricsServer* metrics_=nullptr;
-    std::unique_ptr<RegistryServer> rs_;
-    std::unique_ptr<HeartbeatService> heartbeat_;
-    std::unique_ptr<ExpiryService> expiry_;
-    std::unique_ptr<CompactionService> compaction_;
-    std::vector<std::unique_ptr<StorageServer>> ss_; std::vector<std::unique_ptr<StorageClient>> sc_;
-    std::unique_ptr<RegistryClient> rc_; std::unique_ptr<Engine> engine_;
+    bool validate_api_key(uint32_t group_id, const std::string& permission) const;
+
+    ClusterConfig config_;
+    std::unique_ptr<RegistryServer> registry_server_;
+    std::vector<std::unique_ptr<StorageServer>> storage_servers_;
+    std::vector<std::unique_ptr<StorageClient>> storage_clients_;
+    std::unique_ptr<RegistryClient> registry_client_;
+    std::unique_ptr<Engine> engine_;
 };
-}
+
+}  // namespace filegroup

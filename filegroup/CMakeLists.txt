@@ -14,8 +14,6 @@ endif()
 
 # Find required packages
 find_package(OpenSSL REQUIRED)
-find_package(Protobuf REQUIRED)
-find_package(gRPC CONFIG REQUIRED)
 find_package(GTest QUIET)
 
 # Common library (Phase 1 foundation)
@@ -81,24 +79,23 @@ target_link_libraries(filegroup_encryption PRIVATE filegroup_common OpenSSL::Cry
 # Compaction library
 add_library(filegroup_compaction OBJECT
     src/compaction/compaction.cc
-    src/compaction/compaction_service.cc
 )
 target_include_directories(filegroup_compaction PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_compaction PRIVATE filegroup_common filegroup_segment filegroup_registry filegroup_engine filegroup_storage)
+target_link_libraries(filegroup_compaction PRIVATE filegroup_common filegroup_segment)
 
 # Registry Service library
 add_library(filegroup_registry OBJECT
     src/registry/registry_service.cc
 )
 target_include_directories(filegroup_registry PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_registry PRIVATE filegroup_common filegroup_raft filegroup_manifest filegroup_config filegroup_file_header filegroup_encryption filegroup_segment)
+target_link_libraries(filegroup_registry PRIVATE filegroup_common)
 
 # Storage Node Service library
 add_library(filegroup_storage OBJECT
     src/storage/storage_node_service.cc
 )
 target_include_directories(filegroup_storage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_storage PRIVATE filegroup_common filegroup_segment)
+target_link_libraries(filegroup_storage PRIVATE filegroup_common)
 
 # Upload Protocol library
 add_library(filegroup_upload OBJECT
@@ -152,80 +149,13 @@ target_link_libraries(filegroup_expiry PRIVATE filegroup_common)
 
 # Engine Service library
 add_library(filegroup_engine OBJECT
-    src/engine/engine.cc
     src/engine/engine_service.cc
 )
 target_include_directories(filegroup_engine PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_engine PRIVATE
-    filegroup_common filegroup_config filegroup_raft filegroup_registry
-    filegroup_storage filegroup_segment filegroup_distribution
-    filegroup_encryption filegroup_manifest filegroup_file_header)
+target_link_libraries(filegroup_engine PRIVATE filegroup_common)
 
-# Metrics library
-add_library(filegroup_metrics OBJECT
-    src/metrics/metrics.cc
-)
-target_include_directories(filegroup_metrics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-# TLS library
-add_library(filegroup_tls OBJECT
-    src/tls/tls_init.cc
-)
-target_include_directories(filegroup_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(filegroup_tls PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-
-# dbctl CLI tool
-add_executable(dbctl
-    src/cli/dbctl.cc
-    $<TARGET_OBJECTS:filegroup_common>
-    $<TARGET_OBJECTS:filegroup_config>
-    $<TARGET_OBJECTS:filegroup_file_header>
-    $<TARGET_OBJECTS:filegroup_manifest>
-    $<TARGET_OBJECTS:filegroup_raft>
-    $<TARGET_OBJECTS:filegroup_segment>
-    $<TARGET_OBJECTS:filegroup_distribution>
-    $<TARGET_OBJECTS:filegroup_encryption>
-    $<TARGET_OBJECTS:filegroup_registry>
-    $<TARGET_OBJECTS:filegroup_storage>
-    $<TARGET_OBJECTS:filegroup_engine>
-    $<TARGET_OBJECTS:filegroup_metrics>
-    $<TARGET_OBJECTS:filegroup_tls>
-)
-target_include_directories(dbctl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(dbctl PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-
-# Main executable — gRPC server (wraps EngineServer, exposed on :8443)
-
-# Compile engine.proto → C++
-set(PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
-set(PROTO_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
-
-set(PROTO_FILE "${PROTO_DIR}/engine.proto")
-set(PROTO_PB_CC  "${PROTO_GEN_DIR}/engine.pb.cc")
-set(PROTO_PB_H   "${PROTO_GEN_DIR}/engine.pb.h")
-set(PROTO_GRPC_CC "${PROTO_GEN_DIR}/engine.grpc.pb.cc")
-set(PROTO_GRPC_H  "${PROTO_GEN_DIR}/engine.grpc.pb.h")
-
-add_custom_command(
-    OUTPUT ${PROTO_PB_CC} ${PROTO_PB_H} ${PROTO_GRPC_CC} ${PROTO_GRPC_H}
-    COMMAND protobuf::protoc
-        --proto_path=${PROTO_DIR}
-        --cpp_out=${PROTO_GEN_DIR}
-        --grpc_out=${PROTO_GEN_DIR}
-        --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
-        ${PROTO_FILE}
-    DEPENDS ${PROTO_FILE}
-    COMMENT "Generating gRPC code from engine.proto"
-)
-
-set(PROTO_GEN_SRCS ${PROTO_PB_CC} ${PROTO_GRPC_CC})
-set(PROTO_GEN_HDRS ${PROTO_PB_H} ${PROTO_GRPC_H})
-
-# gRPC server binary
-add_executable(engine_grpc
-    src/main.cc
-    ${PROTO_GEN_SRCS}
+# Main executable (stub for now)
+add_executable(engine src/main.cc
     $<TARGET_OBJECTS:filegroup_common>
     $<TARGET_OBJECTS:filegroup_config>
     $<TARGET_OBJECTS:filegroup_file_header>
@@ -237,16 +167,18 @@ add_executable(engine_grpc
     $<TARGET_OBJECTS:filegroup_compaction>
     $<TARGET_OBJECTS:filegroup_registry>
     $<TARGET_OBJECTS:filegroup_storage>
-    $<TARGET_OBJECTS:filegroup_engine>
-    $<TARGET_OBJECTS:filegroup_metrics>
+    $<TARGET_OBJECTS:filegroup_upload>
+    $<TARGET_OBJECTS:filegroup_read>
+    $<TARGET_OBJECTS:filegroup_versioning>
     $<TARGET_OBJECTS:filegroup_heartbeat>
+    $<TARGET_OBJECTS:filegroup_recovery>
+    $<TARGET_OBJECTS:filegroup_scrubber>
     $<TARGET_OBJECTS:filegroup_expiry>
+    $<TARGET_OBJECTS:filegroup_engine>
 )
-target_include_directories(engine_grpc PRIVATE ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(engine_grpc PRIVATE
+target_include_directories(engine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+target_link_libraries(engine PRIVATE
     OpenSSL::SSL OpenSSL::Crypto
-    protobuf::libprotobuf
-    gRPC::grpc++
 )
 
 # Unit tests
@@ -295,14 +227,9 @@ if(GTest_FOUND)
     add_executable(test_raft tests/unit/test_raft.cc
         $<TARGET_OBJECTS:filegroup_common>
         $<TARGET_OBJECTS:filegroup_raft>
-        $<TARGET_OBJECTS:filegroup_manifest>
-        $<TARGET_OBJECTS:filegroup_config>
-        $<TARGET_OBJECTS:filegroup_file_header>
-        $<TARGET_OBJECTS:filegroup_segment>
-        $<TARGET_OBJECTS:filegroup_encryption>
     )
     target_include_directories(test_raft PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_raft PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
+    target_link_libraries(test_raft PRIVATE GTest::gtest GTest::gtest_main)
     add_test(NAME Raft COMMAND test_raft)
 
     add_executable(test_segment tests/unit/test_segment.cc
@@ -331,57 +258,31 @@ if(GTest_FOUND)
 
     add_executable(test_compaction tests/unit/test_compaction.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_config>
-        $<TARGET_OBJECTS:filegroup_file_header>
-        $<TARGET_OBJECTS:filegroup_manifest>
-        $<TARGET_OBJECTS:filegroup_raft>
         $<TARGET_OBJECTS:filegroup_segment>
-        $<TARGET_OBJECTS:filegroup_distribution>
-        $<TARGET_OBJECTS:filegroup_encryption>
         $<TARGET_OBJECTS:filegroup_compaction>
-        $<TARGET_OBJECTS:filegroup_registry>
-        $<TARGET_OBJECTS:filegroup_storage>
-        $<TARGET_OBJECTS:filegroup_upload>
-        $<TARGET_OBJECTS:filegroup_read>
-        $<TARGET_OBJECTS:filegroup_versioning>
-        $<TARGET_OBJECTS:filegroup_heartbeat>
-        $<TARGET_OBJECTS:filegroup_recovery>
-        $<TARGET_OBJECTS:filegroup_scrubber>
-        $<TARGET_OBJECTS:filegroup_expiry>
-        $<TARGET_OBJECTS:filegroup_engine>
-        $<TARGET_OBJECTS:filegroup_metrics>
     )
     target_include_directories(test_compaction PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_compaction PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
+    target_link_libraries(test_compaction PRIVATE GTest::gtest GTest::gtest_main)
     add_test(NAME Compaction COMMAND test_compaction)
 
     add_executable(test_registry_service tests/unit/test_registry_service.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_raft>
         $<TARGET_OBJECTS:filegroup_registry>
-        $<TARGET_OBJECTS:filegroup_manifest>
-        $<TARGET_OBJECTS:filegroup_config>
-        $<TARGET_OBJECTS:filegroup_file_header>
-        $<TARGET_OBJECTS:filegroup_segment>
-        $<TARGET_OBJECTS:filegroup_distribution>
-        $<TARGET_OBJECTS:filegroup_encryption>
     )
     target_include_directories(test_registry_service PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_registry_service PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
+    target_link_libraries(test_registry_service PRIVATE GTest::gtest GTest::gtest_main)
     add_test(NAME RegistryService COMMAND test_registry_service)
 
     add_executable(test_storage_node_service tests/unit/test_storage_node_service.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_segment>
         $<TARGET_OBJECTS:filegroup_storage>
     )
     target_include_directories(test_storage_node_service PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_storage_node_service PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
+    target_link_libraries(test_storage_node_service PRIVATE GTest::gtest GTest::gtest_main)
     add_test(NAME StorageNodeService COMMAND test_storage_node_service)
 
     add_executable(test_upload_protocol tests/unit/test_upload_protocol.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_segment>
         $<TARGET_OBJECTS:filegroup_upload>
         $<TARGET_OBJECTS:filegroup_distribution>
         $<TARGET_OBJECTS:filegroup_encryption>
@@ -393,7 +294,6 @@ if(GTest_FOUND)
 
     add_executable(test_read_protocol tests/unit/test_read_protocol.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_segment>
         $<TARGET_OBJECTS:filegroup_read>
         $<TARGET_OBJECTS:filegroup_storage>
     )
@@ -423,46 +323,10 @@ if(GTest_FOUND)
 
     add_executable(test_engine_service tests/unit/test_engine_service.cc
         $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_config>
-        $<TARGET_OBJECTS:filegroup_file_header>
-        $<TARGET_OBJECTS:filegroup_manifest>
-        $<TARGET_OBJECTS:filegroup_raft>
-        $<TARGET_OBJECTS:filegroup_registry>
-        $<TARGET_OBJECTS:filegroup_segment>
-        $<TARGET_OBJECTS:filegroup_distribution>
-        $<TARGET_OBJECTS:filegroup_encryption>
-        $<TARGET_OBJECTS:filegroup_storage>
         $<TARGET_OBJECTS:filegroup_engine>
     )
     target_include_directories(test_engine_service PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_engine_service PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
+    target_link_libraries(test_engine_service PRIVATE GTest::gtest GTest::gtest_main)
     add_test(NAME EngineService COMMAND test_engine_service)
-
-    # Integration test: full upload → read round-trip
-    add_executable(test_integration_upload_read tests/integration/test_upload_read.cc
-        $<TARGET_OBJECTS:filegroup_common>
-        $<TARGET_OBJECTS:filegroup_config>
-        $<TARGET_OBJECTS:filegroup_file_header>
-        $<TARGET_OBJECTS:filegroup_manifest>
-        $<TARGET_OBJECTS:filegroup_raft>
-        $<TARGET_OBJECTS:filegroup_registry>
-        $<TARGET_OBJECTS:filegroup_segment>
-        $<TARGET_OBJECTS:filegroup_distribution>
-        $<TARGET_OBJECTS:filegroup_encryption>
-        $<TARGET_OBJECTS:filegroup_storage>
-        $<TARGET_OBJECTS:filegroup_upload>
-        $<TARGET_OBJECTS:filegroup_read>
-        $<TARGET_OBJECTS:filegroup_compaction>
-        $<TARGET_OBJECTS:filegroup_heartbeat>
-        $<TARGET_OBJECTS:filegroup_expiry>
-        $<TARGET_OBJECTS:filegroup_metrics>
-        $<TARGET_OBJECTS:filegroup_versioning>
-        $<TARGET_OBJECTS:filegroup_recovery>
-        $<TARGET_OBJECTS:filegroup_scrubber>
-        $<TARGET_OBJECTS:filegroup_engine>
-    )
-    target_include_directories(test_integration_upload_read PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_integration_upload_read PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
-    add_test(NAME IntegrationUploadRead COMMAND test_integration_upload_read)
 endif()
 
