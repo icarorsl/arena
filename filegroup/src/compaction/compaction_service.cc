@@ -7,6 +7,7 @@
 #include <chrono>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "common/clock.h"
 #include "common/types.h"

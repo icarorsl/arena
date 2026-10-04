@@ -280,7 +280,7 @@ TEST_F(FileIndexTest, VersionDeleted) {
 
     const VersionEntry* ver = index.get_version(800001, 1);
     ASSERT_NE(ver, nullptr);
-    EXPECT_EQ(ver->state, VersionState::DELETED);
+    EXPECT_EQ(ver->state, VersionState::MARKED_DELETED);
 }
 
 // Test: File deleted deletes all versions

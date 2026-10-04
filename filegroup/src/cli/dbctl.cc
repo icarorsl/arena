@@ -176,7 +176,7 @@ int main(int argc, char* argv[]) {
     api.groups = {1}; api.permissions = {"read", "write", "admin"};
     config.api_keys.push_back(api);
 
-    filegroup::EngineServer server(config, "/tmp/filegroup-dbctl");
+    filegroup::EngineServer server(config, nullptr, "/tmp/filegroup-dbctl");
 
     if (cmd == "cluster" && argc >= 3) {
         std::string sub = argv[2];

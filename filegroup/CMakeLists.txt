@@ -14,7 +14,13 @@ endif()
 
 # Find required packages
 find_package(OpenSSL REQUIRED)
-find_package(Protobuf REQUIRED)
+# Homebrew (macOS) ships a protobuf CMake config; Ubuntu apt only ships a module.
+# Prefer CONFIG so gRPC's find_dependency(Protobuf) doesn't collide, fall back to
+# MODULE on Ubuntu.
+find_package(Protobuf CONFIG QUIET)
+if(NOT Protobuf_FOUND)
+    find_package(Protobuf REQUIRED)
+endif()
 find_package(gRPC CONFIG REQUIRED)
 find_package(GTest QUIET)
 
@@ -188,6 +194,9 @@ add_executable(dbctl
     $<TARGET_OBJECTS:filegroup_registry>
     $<TARGET_OBJECTS:filegroup_storage>
     $<TARGET_OBJECTS:filegroup_engine>
+    $<TARGET_OBJECTS:filegroup_compaction>
+    $<TARGET_OBJECTS:filegroup_expiry>
+    $<TARGET_OBJECTS:filegroup_heartbeat>
     $<TARGET_OBJECTS:filegroup_metrics>
     $<TARGET_OBJECTS:filegroup_tls>
 )
@@ -407,18 +416,33 @@ if(GTest_FOUND)
         $<TARGET_OBJECTS:filegroup_heartbeat>
         $<TARGET_OBJECTS:filegroup_recovery>
         $<TARGET_OBJECTS:filegroup_scrubber>
+        $<TARGET_OBJECTS:filegroup_storage>
+        $<TARGET_OBJECTS:filegroup_registry>
+        $<TARGET_OBJECTS:filegroup_raft>
+        $<TARGET_OBJECTS:filegroup_manifest>
+        $<TARGET_OBJECTS:filegroup_config>
+        $<TARGET_OBJECTS:filegroup_file_header>
+        $<TARGET_OBJECTS:filegroup_encryption>
+        $<TARGET_OBJECTS:filegroup_segment>
     )
     target_include_directories(test_versioning_heartbeat_recovery_scrubbing PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_versioning_heartbeat_recovery_scrubbing PRIVATE GTest::gtest GTest::gtest_main)
+    target_link_libraries(test_versioning_heartbeat_recovery_scrubbing PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
     add_test(NAME VersioningHeartbeatRecoveryScrubbing COMMAND test_versioning_heartbeat_recovery_scrubbing)
 
     add_executable(test_expiry_storage_recovery tests/unit/test_expiry_storage_recovery.cc
         $<TARGET_OBJECTS:filegroup_common>
         $<TARGET_OBJECTS:filegroup_expiry>
         $<TARGET_OBJECTS:filegroup_recovery>
+        $<TARGET_OBJECTS:filegroup_registry>
+        $<TARGET_OBJECTS:filegroup_raft>
+        $<TARGET_OBJECTS:filegroup_manifest>
+        $<TARGET_OBJECTS:filegroup_config>
+        $<TARGET_OBJECTS:filegroup_file_header>
+        $<TARGET_OBJECTS:filegroup_encryption>
+        $<TARGET_OBJECTS:filegroup_segment>
     )
     target_include_directories(test_expiry_storage_recovery PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-    target_link_libraries(test_expiry_storage_recovery PRIVATE GTest::gtest GTest::gtest_main)
+    target_link_libraries(test_expiry_storage_recovery PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)
     add_test(NAME ExpiryStorageRecovery COMMAND test_expiry_storage_recovery)
 
     add_executable(test_engine_service tests/unit/test_engine_service.cc
@@ -433,6 +457,10 @@ if(GTest_FOUND)
         $<TARGET_OBJECTS:filegroup_encryption>
         $<TARGET_OBJECTS:filegroup_storage>
         $<TARGET_OBJECTS:filegroup_engine>
+        $<TARGET_OBJECTS:filegroup_compaction>
+        $<TARGET_OBJECTS:filegroup_expiry>
+        $<TARGET_OBJECTS:filegroup_heartbeat>
+        $<TARGET_OBJECTS:filegroup_metrics>
     )
     target_include_directories(test_engine_service PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(test_engine_service PRIVATE GTest::gtest GTest::gtest_main OpenSSL::Crypto)

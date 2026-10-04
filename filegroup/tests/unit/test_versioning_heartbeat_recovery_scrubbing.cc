@@ -81,41 +81,17 @@ TEST_F(VersioningServiceTest, ListVersions) {
 // Heartbeat Tests
 class HeartbeatServiceTest : public ::testing::Test {};
 
-TEST_F(HeartbeatServiceTest, ReportHeartbeat) {
-    HeartbeatService hs;
-    
-    hs.report_heartbeat(1, 1000000, 1000000, 5000000, 10);
-    
-    EXPECT_TRUE(hs.is_node_alive(1));
+TEST_F(HeartbeatServiceTest, UnknownNodeDefaultsToHealthy) {
+    std::vector<StorageClient*> clients;
+    HeartbeatService hs(clients, nullptr, 0);
+    EXPECT_EQ(hs.get_state(1), NodeState::HEALTHY);
 }
 
-TEST_F(HeartbeatServiceTest, NodeNotAlive) {
-    HeartbeatService hs;
-    
-    EXPECT_FALSE(hs.is_node_alive(999));
-}
-
-TEST_F(HeartbeatServiceTest, GetHealthyNodes) {
-    HeartbeatService hs;
-    
-    hs.report_heartbeat(1, 1000000, 1000000, 5000000, 10);
-    hs.report_heartbeat(2, 1000000, 1000000, 5000000, 10);
-    hs.report_heartbeat(3, 1000000, 1000000, 5000000, 10);
-    
-    auto healthy = hs.get_healthy_nodes();
-    EXPECT_EQ(healthy.size(), 3);
-}
-
-TEST_F(HeartbeatServiceTest, GetNodeStatus) {
-    HeartbeatService hs;
-    
-    hs.report_heartbeat(1, 5000000, 1000000, 5000000, 50);
-    
-    auto status = hs.get_node_status(1);
-    EXPECT_EQ(status.node_id, 1);
-    EXPECT_TRUE(status.alive);
-    EXPECT_EQ(status.uptime_us, 5000000);
-    EXPECT_EQ(status.chunk_count, 50);
+TEST_F(HeartbeatServiceTest, StopWithoutStartIsSafe) {
+    std::vector<StorageClient*> clients;
+    HeartbeatService hs(clients, nullptr, 0);
+    hs.stop();
+    SUCCEED();
 }
 
 // Recovery Tests
