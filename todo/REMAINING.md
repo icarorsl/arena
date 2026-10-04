@@ -14,6 +14,7 @@
 | Serve correct MIME type | Sniff magic bytes to set Content-Type for Play page (mp4, webm, etc.) |
 | UpdateTable gRPC + UI | Modify table config (name, expiry, max_versions, chunk_size). Lazy enforcement — expiry scanner picks up new `file_expires_in_days` on next 60s cycle; `max_versions` only affects future `complete_session` calls. |
 | File.cshtml null ref | Line 7 crashes when FileInfo is null (stale data after compaction) |
+| Health-aware chunk placement | Writes can fail when a storage node is down: `assign_chunks` uses all configured nodes, so with `replication_factor=3` on a 3-node cluster a down node may be chosen as primary. Needs unhealthy-node exclusion and/or reduced-replication fallback (ties into re-replication). |
 
 ## ❌ Production hardening (not in Phase 1 spec)
 

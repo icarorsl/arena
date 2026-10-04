@@ -118,7 +118,8 @@ filegroup/
 Steps 1–18, 20–22 are complete (see `../todo/COMPLETED.md`), including
 multi-node Raft and chunk replication over gRPC. Step 19 (background
 scrubbing) and production hardening (mTLS for cluster RPCs, re-replication,
-structured logging) remain — see `../todo/REMAINING.md`.
+health-aware chunk placement, structured logging) remain — see
+`../todo/REMAINING.md`.
 
 ## Known Limitations (Phase 1)
 

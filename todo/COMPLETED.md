@@ -50,6 +50,15 @@
 | Reliability fixes | ✅ Config-accurate storage node IDs; local-only compaction/rescan; heartbeat first-sweep delay; `EngineServer` teardown joins background threads before registry/engine destruction |
 | Integration tests | ✅ `ClusterReplication` (Raft + storage over gRPC), `ClusterEngine` (3-node upload → cross-node read) |
 
+### 🆕 Dashboard cluster-awareness
+| Component | Status |
+|---|---|
+| `GetNodeStatus` RPC | ✅ Engine reports node id, leader/follower role, leader id, commit index and last applied index |
+| Failover | ✅ Dashboard holds a channel per `Engine:Nodes` and retries the next node on `Unavailable` (unary + server-streaming; streaming retries only before the first response) |
+| Cluster Status page | ✅ Lists every node with Raft role, leader id and commit/apply index, or UNREACHABLE |
+| Replication check page | ✅ Uploads a probe file to the active node, reads it back from every node, reports MATCH/FAIL per node |
+| Proto sync | ✅ C# `engine.proto` copies refreshed to match `filegroup/proto/engine.proto` |
+
 ### 🆕 Beyond Spec
 | Component | Status |
 |---|---|

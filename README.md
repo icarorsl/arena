@@ -50,6 +50,7 @@ succeeds only if both Raft metadata and chunk replication worked.
 
 - Step 19 — background scrubbing (integrity checking) is still stubbed
 - Production hardening: mTLS for cluster-internal RPCs, automatic
-  re-replication after a node failure, structured logging
+  re-replication after a node failure, health-aware chunk placement
+  (writes can fail while a storage node is down), structured logging
 
 See `todo/REMAINING.md` for open items and `todo/COMPLETED.md` for what's done.
