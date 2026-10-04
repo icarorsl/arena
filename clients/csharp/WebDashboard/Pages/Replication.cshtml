@@ -1,0 +1,67 @@
+@page
+@model WebDashboard.Pages.ReplicationModel
+@{
+    ViewData["Title"] = "Replication";
+}
+
+<h2>Replication Check</h2>
+
+<p style="color:var(--muted);">
+    Uploads a small probe file to the first node, then reads it back from
+    <strong>every</strong> node and compares the bytes. A read from another node
+    only succeeds if Raft metadata and chunk replication both worked.
+</p>
+
+<form method="post">
+    <button type="submit">Run replication check</button>
+</form>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="status" style="border-color:var(--err);margin-top:1rem;">
+        <p style="color:var(--err);">@Model.Error</p>
+    </div>
+}
+
+@if (Model.Ran && string.IsNullOrEmpty(Model.Error))
+{
+    <div class="meta-grid" style="margin-top:1.5rem;">
+        <div class="meta-card">
+            <div class="label">Written to</div>
+            <div class="value mono" style="font-size:.85rem;">@Model.WriterAddress</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">File ID</div>
+            <div class="value mono">@Model.LogicalFileId</div>
+        </div>
+        <div class="meta-card">
+            <div class="label">Payload</div>
+            <div class="value mono">@Model.PayloadSize B</div>
+        </div>
+    </div>
+
+    <h3 style="margin-top:2rem;">Read-back results</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Node</th>
+                <th>Result</th>
+                <th>Bytes</th>
+                <th>Detail</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.Results)
+        {
+            <tr>
+                <td class="mono" style="font-size:.8rem;">@r.Address</td>
+                <td>
+                    <span class="badge @(r.Ok ? "ok" : "err")">@(r.Ok ? "MATCH" : "FAIL")</span>
+                </td>
+                <td class="mono">@r.Bytes</td>
+                <td style="color:var(--muted);font-size:.8rem;">@r.Error</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

@@ -37,14 +37,25 @@ The C++ unit/integration tests (including the gRPC cluster tests) live in
 
 ## Web Dashboard
 
-A read-only browser dashboard for exploring files and versions.
+A browser dashboard for exploring and managing files, versions and tables.
 
 ```bash
-dotnet run --project WebDashboard
+dotnet run --project WebDashboard --urls http://localhost:5001
 # Open http://localhost:5001
 ```
 
-Requires the engine running (Docker or native) on `localhost:8443`.
+It is **cluster-aware**: `Engine:Nodes` in `appsettings.json` lists the engine
+URLs, and the dashboard fails over to the next node when the active one is
+unreachable. Requirements: the engines run (Docker or native); with the default
+config it starts on `localhost:8443` and can fall back to `8444`/`8445`.
+
+Pages of note:
+- **Status** — every node with its Raft role (leader/follower), leader id and
+  commit/apply index.
+- **Replication** — uploads a small probe file to the active node and reads it
+  back from *every* node, reporting MATCH/FAIL per node. This is the UI form of
+  `make verify` and only passes when Raft metadata and chunk replication work.
+- Tables / Files / Upload / File / Play / Segments for everyday use.
 
 ```csharp
 using FileGroup;

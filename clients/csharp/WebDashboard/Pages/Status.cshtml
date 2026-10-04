@@ -15,8 +15,8 @@
 
 <div class="meta-grid">
     <div class="meta-card">
-        <div class="label">Engine</div>
-        <div class="value"><span class="badge @(Model.EngineOk ? "ok" : "err")">@(Model.EngineOk ? "connected" : "unreachable")</span></div>
+        <div class="label">Active Node</div>
+        <div class="value mono" style="font-size:.85rem;">@Model.ActiveAddress</div>
     </div>
     <div class="meta-card">
         <div class="label">Files</div>
@@ -28,30 +28,54 @@
     </div>
 </div>
 
-<h3 style="margin-top:2rem;">Storage Nodes</h3>
+<h3 style="margin-top:2rem;">Nodes</h3>
 <table>
     <thead>
         <tr>
-            <th>Node ID</th>
-            <th>Status</th>
-            <th>Last Check</th>
+            <th>Node</th>
+            <th>Address</th>
+            <th>Role</th>
+            <th>Leader</th>
+            <th>Commit</th>
+            <th>Applied</th>
         </tr>
     </thead>
     <tbody>
     @if (Model.Nodes.Count == 0)
     {
-        <tr><td colspan="3" style="color:var(--muted);">No storage nodes configured.</td></tr>
+        <tr><td colspan="6" style="color:var(--muted);">No engine nodes configured.</td></tr>
     }
     else
     {
         @foreach (var n in Model.Nodes)
         {
             <tr>
-                <td class="mono">@n.NodeId</td>
-                <td><span class="badge @(n.Alive ? "ok" : "err")">@(n.Alive ? "HEALTHY" : "UNREACHABLE")</span></td>
-                <td class="mono" style="font-size:.8rem;">@n.LastCheck.ToString("HH:mm:ss")</td>
+                <td class="mono">@(n.Alive ? n.NodeId : "—")</td>
+                <td class="mono" style="font-size:.8rem;">@n.Address</td>
+                <td>
+                    @if (!n.Alive)
+                    {
+                        <span class="badge err">UNREACHABLE</span>
+                    }
+                    else if (n.IsLeader)
+                    {
+                        <span class="badge ok">LEADER</span>
+                    }
+                    else
+                    {
+                        <span class="badge">FOLLOWER</span>
+                    }
+                </td>
+                <td class="mono">@(n.Alive && n.LeaderId != 0 ? n.LeaderId.ToString() : "—")</td>
+                <td class="mono">@(n.Alive ? n.CommitIndex.ToString() : "—")</td>
+                <td class="mono">@(n.Alive ? n.LastApplied.ToString() : "—")</td>
             </tr>
         }
     }
     </tbody>
 </table>
+
+<p style="color:var(--muted);margin-top:1rem;font-size:.85rem;">
+    Reads and writes are served by the active node; if it becomes unreachable the
+    dashboard fails over to the next node automatically.
+</p>

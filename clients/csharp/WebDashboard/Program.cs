@@ -15,17 +15,10 @@ builder.Services.Configure<FormOptions>(options =>
     options.MultipartBodyLengthLimit = 4L * 1024 * 1024 * 1024; // 4 GB
 });
 
-// Register gRPC client — connect to engine (Docker or native)
-var engineAddress = builder.Configuration.GetValue<string>("Engine:Address") ?? "http://localhost:8443";
-builder.Services.AddSingleton(sp =>
-{
-    var channel = GrpcChannel.ForAddress(engineAddress, new GrpcChannelOptions
-    {
-        MaxReceiveMessageSize = null, // unlimited — engine sends entire file as single message
-        MaxSendMessageSize = 256 * 1024 * 1024
-    });
-    return new Engine.EngineClient(channel);
-});
+// Cluster-aware connection: one channel per configured node, with transparent
+// failover. Pages keep injecting Engine.EngineClient (the failover client).
+builder.Services.AddSingleton<WebDashboard.EngineConnection>();
+builder.Services.AddSingleton(sp => sp.GetRequiredService<WebDashboard.EngineConnection>().Client);
 
 var app = builder.Build();
 
