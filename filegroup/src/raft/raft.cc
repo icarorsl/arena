@@ -62,7 +62,7 @@ void RaftNode::stop() {
 // ============================================================================
 
 std::pair<bool, uint64_t> RaftNode::propose(uint32_t entry_type, const void* body, uint16_t body_length) {
-    std::lock_guard<std::mutex> lock(persistent_mutex_);
+    std::unique_lock<std::mutex> lock(persistent_mutex_);
 
     if (role_ != RaftRole::LEADER) {
         return {false, 0};
@@ -79,21 +79,35 @@ std::pair<bool, uint64_t> RaftNode::propose(uint32_t entry_type, const void* bod
 
     leader_state_.match_index[config_.local_node_id] = entry.index;
 
-    // Phase 1: single-node — commit and apply immediately
-    volatile_.commit_index = entry.index;
-    if (apply_callback_) {
-        apply_callback_(entry_type, entry.data.data(), (uint16_t)entry.data.size(), entry.index);
-    }
-
     persist_state();
 
-    return {true, entry.index};
+    const uint64_t target_index = entry.index;
+
+    // Release the log lock, then wait until the entry is replicated to a
+    // majority (multi-node) and applied to the state machine, or until we
+    // lose leadership. Single-node clusters reach this via the event loop.
+    lock.unlock();
+
+    {
+        std::unique_lock<std::mutex> commit_lock(commit_mutex_);
+        commit_cv_.wait_for(commit_lock, std::chrono::milliseconds(2000), [&] {
+            return volatile_.last_applied.load() >= target_index
+                || role_.load() != RaftRole::LEADER;
+        });
+    }
+
+    if (role_ != RaftRole::LEADER || volatile_.last_applied.load() < target_index) {
+        return {false, 0};
+    }
+
+    return {true, target_index};
 }
 
 RaftRole RaftNode::role() const { return role_.load(); }
 uint32_t RaftNode::leader_id() const { return leader_id_.load(); }
 uint64_t RaftNode::current_term() const { return persistent_.current_term; }
-uint64_t RaftNode::commit_index() const { return volatile_.commit_index; }
+uint64_t RaftNode::commit_index() const { return volatile_.commit_index.load(); }
+uint64_t RaftNode::last_applied() const { return volatile_.last_applied.load(); }
 size_t RaftNode::log_size() const { return persistent_.log.size(); }
 bool RaftNode::is_leader() const { return role_ == RaftRole::LEADER; }
 
@@ -118,6 +132,7 @@ void RaftNode::become_follower(uint64_t term) {
     persistent_.voted_for = 0;
     leader_id_ = 0;
     persist_state();
+    commit_cv_.notify_all(); // unblock any propose() waiting on leadership
 }
 
 void RaftNode::become_candidate() {
@@ -194,19 +209,21 @@ void RaftNode::run() {
 // ============================================================================
 
 void RaftNode::start_election() {
-    if (role_ == RaftRole::LEADER) return;
+    RequestVoteArgs args;
+    {
+        std::lock_guard<std::mutex> lock(persistent_mutex_);
+        if (role_ == RaftRole::LEADER) return;
 
-    become_candidate();
+        become_candidate();
+        args.term = persistent_.current_term;
+        args.candidate_id = config_.local_node_id;
+        args.last_log_index = last_log_index();
+        args.last_log_term = last_log_term();
+    }
     reset_election_timer();
 
     std::cout << "[raft] node " << config_.local_node_id
-              << " starting election for term " << persistent_.current_term << std::endl;
-
-    RequestVoteArgs args;
-    args.term = persistent_.current_term;
-    args.candidate_id = config_.local_node_id;
-    args.last_log_index = last_log_index();
-    args.last_log_term = last_log_term();
+              << " starting election for term " << args.term << std::endl;
 
     for (uint32_t peer : config_.peer_node_ids) {
         if (peer == config_.local_node_id) continue;
@@ -217,6 +234,7 @@ void RaftNode::start_election() {
 
         std::lock_guard<std::mutex> lock(election_mutex_);
 
+        std::lock_guard<std::mutex> plock(persistent_mutex_);
         if (reply.term > persistent_.current_term) {
             become_follower(reply.term);
             reset_election_timer();
@@ -231,6 +249,7 @@ void RaftNode::start_election() {
 
     // Check if won election
     uint32_t majority = config_.peer_node_ids.size() / 2 + 1;
+    std::lock_guard<std::mutex> lock(persistent_mutex_);
     if (votes_received_ >= majority && role_ == RaftRole::CANDIDATE) {
         become_leader();
     }
@@ -302,35 +321,44 @@ RequestVoteReply RaftNode::handle_request_vote(const RequestVoteArgs& args) {
 void RaftNode::send_heartbeats() {
     if (role_ != RaftRole::LEADER) return;
 
-    AppendEntriesArgs args;
-    args.term = persistent_.current_term;
-    args.leader_id = config_.local_node_id;
-    args.leader_commit = volatile_.commit_index;
+    // Snapshot the per-follower AppendEntries messages under the log lock so we
+    // never hold it across a transport call (which would risk lock inversion).
+    std::vector<std::pair<uint32_t, AppendEntriesArgs>> messages;
+    {
+        std::lock_guard<std::mutex> lock(persistent_mutex_);
+        if (role_ != RaftRole::LEADER) return;
 
-    for (uint32_t peer : config_.peer_node_ids) {
-        if (peer == config_.local_node_id) continue;
+        for (uint32_t peer : config_.peer_node_ids) {
+            if (peer == config_.local_node_id) continue;
 
-        // Build per-follower args
-        uint64_t next_idx = leader_state_.next_index[peer];
-        args.prev_log_index = next_idx - 1;
-        args.prev_log_term = 0;
+            AppendEntriesArgs args;
+            args.term = persistent_.current_term;
+            args.leader_id = config_.local_node_id;
+            args.leader_commit = volatile_.commit_index.load();
 
-        // Determine prev_log_term
-        if (args.prev_log_index > 0 && args.prev_log_index <= persistent_.log.size()) {
-            args.prev_log_term = persistent_.log[args.prev_log_index - 1].term;
-        }
+            uint64_t next_idx = leader_state_.next_index[peer];
+            args.prev_log_index = next_idx - 1;
+            args.prev_log_term = 0;
 
-        // Gather entries to send
-        args.entries.clear();
-        if (next_idx <= persistent_.log.size()) {
-            for (size_t i = next_idx - 1; i < persistent_.log.size(); i++) {
-                args.entries.push_back(persistent_.log[i]);
+            if (args.prev_log_index > 0 && args.prev_log_index <= persistent_.log.size()) {
+                args.prev_log_term = persistent_.log[args.prev_log_index - 1].term;
             }
-        }
 
+            if (next_idx <= persistent_.log.size()) {
+                for (size_t i = next_idx - 1; i < persistent_.log.size(); i++) {
+                    args.entries.push_back(persistent_.log[i]);
+                }
+            }
+
+            messages.emplace_back(peer, std::move(args));
+        }
+    }
+
+    for (auto& [peer, args] : messages) {
         AppendEntriesReply reply = transport_->send_append_entries(peer, args);
 
         std::lock_guard<std::mutex> lock(persistent_mutex_);
+        if (role_ != RaftRole::LEADER) return;
 
         if (reply.term > persistent_.current_term) {
             become_follower(reply.term);
@@ -354,6 +382,9 @@ void RaftNode::send_heartbeats() {
 }
 
 void RaftNode::advance_commit_index() {
+    std::lock_guard<std::mutex> lock(persistent_mutex_);
+    if (role_ != RaftRole::LEADER) return;
+
     // Find the highest log index replicated on a majority of nodes
     std::vector<uint64_t> match_indices;
     for (auto& [node_id, idx] : leader_state_.match_index) {
@@ -365,12 +396,13 @@ void RaftNode::advance_commit_index() {
     if (match_indices.size() >= majority) {
         uint64_t new_commit = match_indices[majority - 1];
         // Only commit entries from current term (Raft safety property)
-        if (new_commit > volatile_.commit_index) {
+        if (new_commit > volatile_.commit_index.load()) {
             // Check term of entry at new_commit
             if (new_commit <= persistent_.log.size()) {
                 uint64_t entry_term = persistent_.log[new_commit - 1].term;
                 if (entry_term == persistent_.current_term) {
-                    volatile_.commit_index = new_commit;
+                    volatile_.commit_index.store(new_commit);
+                    commit_cv_.notify_all();
                 }
             }
         }
@@ -460,8 +492,9 @@ AppendEntriesReply RaftNode::handle_append_entries(const AppendEntriesArgs& args
 // ============================================================================
 
 void RaftNode::apply_committed_entries() {
-    while (volatile_.last_applied < volatile_.commit_index) {
-        uint64_t next_idx = volatile_.last_applied + 1;
+    std::lock_guard<std::mutex> lock(persistent_mutex_);
+    while (volatile_.last_applied.load() < volatile_.commit_index.load()) {
+        uint64_t next_idx = volatile_.last_applied.load() + 1;
         if (next_idx > persistent_.log.size()) break;
 
         const auto& entry = persistent_.log[next_idx - 1];
@@ -471,8 +504,10 @@ void RaftNode::apply_committed_entries() {
                            static_cast<uint16_t>(entry.data.size()), entry.index);
         }
 
-        volatile_.last_applied = next_idx;
+        volatile_.last_applied.store(next_idx);
     }
+    // Wake any propose() waiting for its entry to be applied.
+    commit_cv_.notify_all();
 }
 
 // ============================================================================

@@ -51,9 +51,10 @@ struct PersistentState {
 };
 
 // Volatile state on all nodes
+// Atomic so a proposing thread can observe commit/apply progress safely.
 struct VolatileState {
-    uint64_t commit_index = 0;
-    uint64_t last_applied = 0;
+    std::atomic<uint64_t> commit_index{0};
+    std::atomic<uint64_t> last_applied{0};
 };
 
 // Volatile state on leader only
@@ -157,6 +158,9 @@ public:
     /// Get commit index.
     uint64_t commit_index() const;
 
+    /// Get index of the last entry applied to the state machine.
+    uint64_t last_applied() const;
+
     /// Get log size.
     size_t log_size() const;
 
@@ -218,6 +222,10 @@ private:
     // Volatile state
     VolatileState volatile_;
     LeaderState leader_state_;
+
+    // Commit notification — propose() waits until its entry has been applied
+    std::mutex commit_mutex_;
+    std::condition_variable commit_cv_;
 
     // Role and leadership
     std::atomic<RaftRole> role_{RaftRole::FOLLOWER};
