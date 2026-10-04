@@ -242,6 +242,23 @@ public:
         return Status::OK;
     }
 
+    // ── Cluster Introspection ──────────────────────────────────────────
+
+    grpc::Status GetNodeStatus(ServerContext* ctx,
+                               const filegroup::engine::GetNodeStatusRequest* req,
+                               filegroup::engine::GetNodeStatusResponse* resp) override
+    {
+        (void)ctx; (void)req;
+        auto s = server_.get_node_status();
+        resp->set_node_id(s.node_id);
+        resp->set_is_leader(s.is_leader);
+        resp->set_leader_id(s.leader_id);
+        resp->set_commit_index(s.commit_index);
+        resp->set_last_applied(s.last_applied);
+        if (!s.error.empty()) resp->set_error(s.error);
+        return Status::OK;
+    }
+
     // ReadFile is server-streaming — simplified for Phase 1
     grpc::Status ReadFile(ServerContext* ctx,
                            const filegroup::engine::ReadFileRequest* req,

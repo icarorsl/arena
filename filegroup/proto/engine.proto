@@ -37,6 +37,9 @@ service Engine {
 
     // Storage introspection
     rpc ListSegments(ListSegmentsRequest) returns (ListSegmentsResponse);
+
+    // Cluster introspection
+    rpc GetNodeStatus(GetNodeStatusRequest) returns (GetNodeStatusResponse);
 }
 
 // ============================================================================
@@ -334,4 +337,19 @@ message SegmentInfo {
 message ListSegmentsResponse {
     repeated SegmentInfo segments = 1;
     string error = 2;
+}
+
+// ============================================================================
+// Cluster Introspection — report this node's Raft role/position
+// ============================================================================
+
+message GetNodeStatusRequest {}
+
+message GetNodeStatusResponse {
+    uint32 node_id = 1;
+    bool is_leader = 2;
+    uint32 leader_id = 3;         // 0 = unknown
+    uint64 commit_index = 4;
+    uint64 last_applied = 5;
+    string error = 6;
 }

@@ -64,6 +64,8 @@ public:
     SR create_table(uint32_t tid,uint32_t gid,const std::string& name,uint32_t fed=0,uint32_t mv=0);
     struct SIR { std::string file_name; uint32_t node_id=0,group_id=0,table_id=0,chunk_count=0; uint64_t total_size=0,used_bytes=0,created_at_us=0; bool is_page=false; };
     std::vector<SIR> list_segments();
+    struct NSR { bool success=false; uint32_t node_id=0; bool is_leader=false; uint32_t leader_id=0; uint64_t commit_index=0,last_applied=0; std::string error; };
+    NSR get_node_status();
     bool ping() const;
     Engine& engine(){return *engine_;}
 private:

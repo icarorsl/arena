@@ -220,4 +220,16 @@ std::vector<EngineServer::SIR> EngineServer::list_segments(){
  }
  return r;
 }
+
+EngineServer::NSR EngineServer::get_node_status(){
+ NSR r;
+ if(!rs_){r.error="no registry";return r;}
+ r.success=true;
+ r.node_id=rs_->node_id();
+ r.is_leader=rs_->is_leader();
+ r.leader_id=rs_->leader_id();
+ r.commit_index=rs_->raft_node().commit_index();
+ r.last_applied=rs_->raft_node().last_applied();
+ return r;
+}
 }
