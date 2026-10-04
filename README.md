@@ -9,6 +9,8 @@ Arena is a high-performance distributed file storage system built in C++ with a 
 | Web Dashboard | `clients/csharp/WebDashboard/` | ASP.NET Core Razor Pages | ✅ Cluster-aware, failover + replication check |
 | Docker | `filegroup/docker-compose.yml` | Docker | ✅ 3-node cluster, replication working |
 
+See **[FEATURES.md](./FEATURES.md)** for the complete feature inventory.
+
 ## Quick Start (3-node cluster)
 
 ```bash
