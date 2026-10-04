@@ -24,6 +24,14 @@ public:
                    const std::vector<uint32_t>& peer_ids,
                    const std::string& raft_log_path,
                    uint32_t group_id);
+
+    /// Construct with an externally supplied transport (e.g. GrpcRaftTransport
+    /// for a real multi-node cluster). If null, an in-process transport is used.
+    RegistryServer(uint32_t node_id,
+                   const std::vector<uint32_t>& peer_ids,
+                   const std::string& raft_log_path,
+                   uint32_t group_id,
+                   std::unique_ptr<RaftTransport> transport);
     ~RegistryServer();
 
     /// Start the Raft node (begins election / following).
@@ -57,7 +65,7 @@ private:
     uint32_t group_id_;
     FileIndex file_index_;
     std::unique_ptr<RaftNode> raft_;
-    std::unique_ptr<InProcessRaftTransport> transport_;
+    std::unique_ptr<RaftTransport> transport_;
 };
 
 // ============================================================================
@@ -67,9 +75,21 @@ private:
 
 class RegistryClient {
 public:
+    /// Forwards a proposal to a remote leader over gRPC. Returns (success, lsn).
+    using AppendForwarder = std::function<std::pair<bool, uint64_t>(
+        uint32_t leader_id, uint32_t entry_type, const void* body, uint16_t body_length)>;
+
+    /// Resolves the current leader node id by querying peer registries. Returns 0 if unknown.
+    using LeaderResolver = std::function<uint32_t()>;
+
     /// Create a client connected to multiple registry servers (for leader discovery).
     /// The client tries each server until it finds the leader.
     explicit RegistryClient(std::vector<RegistryServer*> servers);
+
+    /// Cluster mode: use gRPC to forward writes to a remote leader, but read
+    /// replicated metadata from the local registry node (servers_[0]).
+    void set_append_forwarder(AppendForwarder forwarder);
+    void set_leader_resolver(LeaderResolver resolver);
 
     /// Append a manifest entry. Finds the leader, sends proposal, waits for commit.
     /// Returns (success, lsn).
@@ -112,7 +132,17 @@ public:
     uint64_t next_session_id();
 
 private:
+    /// Returns the leader if one of our local servers is the leader, otherwise
+    /// the first local server (used for reads, which the local Raft state
+    /// machine can serve even when it is a follower).
+    RegistryServer* local_read_target();
+
+    /// Block (bounded) until the local Raft state machine has applied `lsn`.
+    void wait_for_local_apply(uint64_t lsn);
+
     std::vector<RegistryServer*> servers_;
+    AppendForwarder append_forwarder_;
+    LeaderResolver leader_resolver_;
 };
 
 }  // namespace filegroup

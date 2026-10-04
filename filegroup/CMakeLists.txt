@@ -231,10 +231,58 @@ add_custom_command(
 set(PROTO_GEN_SRCS ${PROTO_PB_CC} ${PROTO_GRPC_CC})
 set(PROTO_GEN_HDRS ${PROTO_PB_H} ${PROTO_GRPC_H})
 
+# ---------------------------------------------------------------------------
+# Internal cluster RPCs: registry.proto (Raft transport + metadata) and
+# storage.proto (chunk replication). Previously unused; now generated so the
+# engine can form a real multi-node cluster.
+# ---------------------------------------------------------------------------
+add_custom_command(
+    OUTPUT
+        ${PROTO_GEN_DIR}/registry.pb.cc ${PROTO_GEN_DIR}/registry.pb.h
+        ${PROTO_GEN_DIR}/registry.grpc.pb.cc ${PROTO_GEN_DIR}/registry.grpc.pb.h
+        ${PROTO_GEN_DIR}/storage.pb.cc ${PROTO_GEN_DIR}/storage.pb.h
+        ${PROTO_GEN_DIR}/storage.grpc.pb.cc ${PROTO_GEN_DIR}/storage.grpc.pb.h
+    COMMAND protobuf::protoc
+        --proto_path=${PROTO_DIR}
+        --cpp_out=${PROTO_GEN_DIR}
+        --grpc_out=${PROTO_GEN_DIR}
+        --plugin=protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
+        ${PROTO_DIR}/registry.proto ${PROTO_DIR}/storage.proto
+    DEPENDS ${PROTO_DIR}/registry.proto ${PROTO_DIR}/storage.proto
+    COMMENT "Generating gRPC code from registry.proto and storage.proto"
+)
+
+add_library(filegroup_cluster_rpc OBJECT
+    ${PROTO_GEN_DIR}/registry.pb.cc
+    ${PROTO_GEN_DIR}/registry.grpc.pb.cc
+    ${PROTO_GEN_DIR}/storage.pb.cc
+    ${PROTO_GEN_DIR}/storage.grpc.pb.cc
+    src/registry/grpc_raft_transport.cc
+    src/registry/registry_grpc_service.cc
+    src/storage/storage_grpc_service.cc
+    src/storage/storage_grpc_client.cc
+)
+set_target_properties(filegroup_cluster_rpc PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(filegroup_cluster_rpc PUBLIC ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(filegroup_cluster_rpc PUBLIC
+    protobuf::libprotobuf gRPC::grpc++
+)
+
+# ClusterNode wires the gRPC cluster pieces to EngineServer, so it is kept out
+# of filegroup_cluster_rpc (which stays engine-free for transport-only tests).
+add_library(filegroup_cluster_node OBJECT src/cluster/cluster_node.cc)
+set_target_properties(filegroup_cluster_node PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(filegroup_cluster_node PUBLIC ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(filegroup_cluster_node PUBLIC
+    protobuf::libprotobuf gRPC::grpc++
+)
+
 # gRPC server binary
 add_executable(engine_grpc
     src/main.cc
     ${PROTO_GEN_SRCS}
+    $<TARGET_OBJECTS:filegroup_cluster_rpc>
+    $<TARGET_OBJECTS:filegroup_cluster_node>
     $<TARGET_OBJECTS:filegroup_common>
     $<TARGET_OBJECTS:filegroup_config>
     $<TARGET_OBJECTS:filegroup_file_header>
@@ -492,5 +540,55 @@ if(GTest_FOUND)
     target_include_directories(test_integration_upload_read PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(test_integration_upload_read PRIVATE GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto)
     add_test(NAME IntegrationUploadRead COMMAND test_integration_upload_read)
+
+    # Integration test: 3-node Raft cluster replicating over gRPC
+    add_executable(test_cluster_replication tests/integration/test_cluster_replication.cc
+        $<TARGET_OBJECTS:filegroup_cluster_rpc>
+        $<TARGET_OBJECTS:filegroup_common>
+        $<TARGET_OBJECTS:filegroup_config>
+        $<TARGET_OBJECTS:filegroup_file_header>
+        $<TARGET_OBJECTS:filegroup_manifest>
+        $<TARGET_OBJECTS:filegroup_raft>
+        $<TARGET_OBJECTS:filegroup_registry>
+        $<TARGET_OBJECTS:filegroup_segment>
+        $<TARGET_OBJECTS:filegroup_storage>
+        $<TARGET_OBJECTS:filegroup_encryption>
+    )
+    target_include_directories(test_cluster_replication PRIVATE ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_cluster_replication PRIVATE
+        GTest::gtest GTest::gtest_main OpenSSL::Crypto
+        protobuf::libprotobuf gRPC::grpc++)
+    add_test(NAME ClusterReplication COMMAND test_cluster_replication)
+
+    # Integration test: full 3-node cluster end-to-end (upload + cross-node read)
+    add_executable(test_cluster_engine tests/integration/test_cluster_engine.cc
+        $<TARGET_OBJECTS:filegroup_cluster_rpc>
+        $<TARGET_OBJECTS:filegroup_cluster_node>
+        $<TARGET_OBJECTS:filegroup_common>
+        $<TARGET_OBJECTS:filegroup_config>
+        $<TARGET_OBJECTS:filegroup_file_header>
+        $<TARGET_OBJECTS:filegroup_manifest>
+        $<TARGET_OBJECTS:filegroup_raft>
+        $<TARGET_OBJECTS:filegroup_registry>
+        $<TARGET_OBJECTS:filegroup_segment>
+        $<TARGET_OBJECTS:filegroup_distribution>
+        $<TARGET_OBJECTS:filegroup_encryption>
+        $<TARGET_OBJECTS:filegroup_storage>
+        $<TARGET_OBJECTS:filegroup_upload>
+        $<TARGET_OBJECTS:filegroup_read>
+        $<TARGET_OBJECTS:filegroup_compaction>
+        $<TARGET_OBJECTS:filegroup_heartbeat>
+        $<TARGET_OBJECTS:filegroup_expiry>
+        $<TARGET_OBJECTS:filegroup_metrics>
+        $<TARGET_OBJECTS:filegroup_versioning>
+        $<TARGET_OBJECTS:filegroup_recovery>
+        $<TARGET_OBJECTS:filegroup_scrubber>
+        $<TARGET_OBJECTS:filegroup_engine>
+    )
+    target_include_directories(test_cluster_engine PRIVATE ${PROTO_GEN_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(test_cluster_engine PRIVATE
+        GTest::gtest GTest::gtest_main OpenSSL::SSL OpenSSL::Crypto
+        protobuf::libprotobuf gRPC::grpc++)
+    add_test(NAME ClusterEngine COMMAND test_cluster_engine)
 endif()
 

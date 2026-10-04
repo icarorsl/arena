@@ -98,9 +98,12 @@ uint32_t CompactionService::run_once() {
     }
 
     for (auto* sc : storage_nodes_) {
-        if (!sc || !sc->ping()) continue;
+        // Only compact storage this engine owns locally; remote nodes run
+        // their own compaction.
+        if (!sc || !sc->is_local() || !sc->ping()) continue;
 
         auto* server = sc->server();
+        if (!server) continue;
         // Scan data directory for segment files (not just in-memory open segments)
         auto seg_paths = find_segment_files(server->data_dir());
         total_segments += seg_paths.size();

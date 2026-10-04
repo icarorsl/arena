@@ -8,23 +8,54 @@
 #include "common/clock.h"
 #include "segment/segment.h"
 namespace filegroup {
-EngineServer::EngineServer(const ClusterConfig& c,MetricsServer* m,const std::string& dr):config_(c),metrics_(m){
- mkdir(dr.c_str(), 0755); // ensure parent dir exists
- for(size_t i=0;i<c.storage_nodes.size();i++){auto& nc=c.storage_nodes[i];
-  auto s=std::make_unique<StorageServer>(nc.node_id,dr+"/node_"+std::to_string(nc.node_id));
-  auto cl=std::make_unique<StorageClient>(s.get());ss_.push_back(std::move(s));sc_.push_back(std::move(cl));}
- rs_=std::make_unique<RegistryServer>(1,std::vector<uint32_t>{1},dr+"/raft.log",0);
- rc_=std::make_unique<RegistryClient>(std::vector<RegistryServer*>{rs_.get()});
- rs_->wait_for_leader(3000000);
- std::vector<StorageClient*> cp;for(auto&x:sc_)cp.push_back(x.get());
- engine_=std::make_unique<Engine>(c,rc_.get(),cp);
- engine_->rebuild_chunk_locations();
- heartbeat_=std::make_unique<HeartbeatService>(cp,rc_.get(),5);
- heartbeat_->start();
- expiry_=std::make_unique<ExpiryService>(rc_.get(),60);
- expiry_->start();
- compaction_=std::make_unique<CompactionService>(*engine_,rc_.get(),cp,60);
- compaction_->start();
+
+namespace {
+// Build the default single-process component set: one in-process registry
+// (single Raft voter) and one in-process storage node per configured entry.
+EngineServerComponents make_inprocess_components(const ClusterConfig& c, const std::string& dr) {
+    EngineServerComponents comps;
+    for (size_t i = 0; i < c.storage_nodes.size(); i++) {
+        auto& nc = c.storage_nodes[i];
+        auto s = std::make_unique<StorageServer>(nc.node_id, dr + "/node_" + std::to_string(nc.node_id));
+        comps.storage_clients.push_back(std::make_unique<StorageClient>(s.get()));
+        comps.local_storage_servers.push_back(std::move(s));
+    }
+    comps.registry = std::make_unique<RegistryServer>(1, std::vector<uint32_t>{1}, dr + "/raft.log", 0);
+    comps.registry_client = std::make_unique<RegistryClient>(std::vector<RegistryServer*>{comps.registry.get()});
+    return comps;
+}
+}  // namespace
+
+EngineServer::EngineServer(const ClusterConfig& c, MetricsServer* m, const std::string& dr)
+    : EngineServer(c, m, dr, make_inprocess_components(c, dr)) {}
+
+EngineServer::EngineServer(const ClusterConfig& c, MetricsServer* m, const std::string& dr,
+                           EngineServerComponents components)
+    : config_(c), metrics_(m) {
+    mkdir(dr.c_str(), 0755); // ensure parent dir exists
+    const bool wait_for_leader = components.wait_for_leader;
+    ss_ = std::move(components.local_storage_servers);
+    sc_ = std::move(components.storage_clients);
+    rs_ = std::move(components.registry);
+    rc_ = std::move(components.registry_client);
+    if (rs_ && wait_for_leader) rs_->wait_for_leader(3000000);
+    std::vector<StorageClient*> cp; for (auto& x : sc_) cp.push_back(x.get());
+    engine_ = std::make_unique<Engine>(c, rc_.get(), cp);
+    engine_->rebuild_chunk_locations();
+    heartbeat_ = std::make_unique<HeartbeatService>(cp, rc_.get(), 5);
+    heartbeat_->start();
+    expiry_ = std::make_unique<ExpiryService>(rc_.get(), 60);
+    expiry_->start();
+    compaction_ = std::make_unique<CompactionService>(*engine_, rc_.get(), cp, 60);
+    compaction_->start();
+}
+
+EngineServer::~EngineServer() {
+    // Join background threads first so they cannot touch the registry/engine
+    // while those members are being destroyed.
+    if (heartbeat_) heartbeat_->stop();
+    if (expiry_) expiry_->stop();
+    if (compaction_) compaction_->stop();
 }
 EngineServer::R EngineServer::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
  R r;try{auto s=engine_->open_session(gid,tid,lid,ts,ec,fed);

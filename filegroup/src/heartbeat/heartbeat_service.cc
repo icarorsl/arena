@@ -40,6 +40,14 @@ NodeState HeartbeatService::get_state(uint16_t node_id) const {
 
 void HeartbeatService::run() {
     while (running_) {
+        // Wait one interval before the first sweep. This gives storage nodes
+        // (which may start slightly later, e.g. other nodes of a cluster) time
+        // to bind their listeners before we probe them.
+        for (uint64_t i = 0; i < interval_us_ && running_; i += 500'000) {
+            std::this_thread::sleep_for(std::chrono::microseconds(500'000));
+        }
+        if (!running_) break;
+
         for (auto* client : clients_) {
             if (!client) continue;
             uint16_t nid = client->node_id();
@@ -71,11 +79,6 @@ void HeartbeatService::run() {
                     registry_->report_node_health(nid, NodeState::DEAD);
                 }
             }
-        }
-
-        // Sleep in small chunks so we can stop quickly
-        for (uint64_t i = 0; i < interval_us_ && running_; i += 500'000) {
-            std::this_thread::sleep_for(std::chrono::microseconds(500'000));
         }
     }
 }

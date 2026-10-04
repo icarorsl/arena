@@ -1,14 +1,66 @@
+# FILE Group — 3-node cluster.
+#
+# Each node runs the engine binary with its own registry (Raft) node and
+# storage node. Raft metadata replication and chunk replication travel over
+# gRPC on the internal network; the client-facing engine API is published on
+# distinct host ports (8443/8444/8445).
+#
+#   docker compose up -d --build
+#   dotnet run --project ../clients/csharp/DemoLocal -- http://localhost:8443 http://localhost:8444
+#
+# The second address reads the just-uploaded file back from a different node,
+# which only works if metadata and chunks were replicated.
+
+x-node-env: &node-env
+  FILEGROUP_REGISTRY_NODES: "1=node1:50051,2=node2:50051,3=node3:50051"
+  FILEGROUP_STORAGE_NODES: "1=node1:5001,2=node2:5001,3=node3:5001"
+  FILEGROUP_REPLICATION: "3"
+  FILEGROUP_DATA_DIR: "/var/lib/filegroup"
+
 services:
-  engine:
+  node1:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      <<: *node-env
+      FILEGROUP_NODE_ID: "1"
     ports:
       - "8443:8443"
       - "9090:9090"
     volumes:
-      - filegroup_data:/var/lib/filegroup
+      - node1_data:/var/lib/filegroup
+    restart: unless-stopped
+
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *node-env
+      FILEGROUP_NODE_ID: "2"
+    ports:
+      - "8444:8443"
+      - "9091:9090"
+    volumes:
+      - node2_data:/var/lib/filegroup
+    restart: unless-stopped
+
+  node3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *node-env
+      FILEGROUP_NODE_ID: "3"
+    ports:
+      - "8445:8443"
+      - "9092:9090"
+    volumes:
+      - node3_data:/var/lib/filegroup
     restart: unless-stopped
 
 volumes:
-  filegroup_data:
+  node1_data:
+  node2_data:
+  node3_data:

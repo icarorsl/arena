@@ -14,9 +14,28 @@
 #include "expiry/expiry_service.h"
 #include "compaction/compaction_service.h"
 namespace filegroup {
+
+/// Pre-built backing components for EngineServer. Lets a caller supply a
+/// multi-node cluster (gRPC transports/clients) instead of the default
+/// single-process, in-process set.
+struct EngineServerComponents {
+    std::unique_ptr<RegistryServer> registry;
+    std::unique_ptr<RegistryClient> registry_client;
+    std::vector<std::unique_ptr<StorageServer>> local_storage_servers;
+    std::vector<std::unique_ptr<StorageClient>> storage_clients; // ordered per config
+    /// Block at startup until this node becomes leader. Should be false for
+    /// multi-node clusters so no node stalls the others' startup.
+    bool wait_for_leader = true;
+};
+
 class EngineServer {
 public:
     EngineServer(const ClusterConfig& config, MetricsServer* metrics=nullptr, const std::string& data_root="/tmp/filegroup");
+    EngineServer(const ClusterConfig& config, MetricsServer* metrics, const std::string& data_root,
+                 EngineServerComponents components);
+    /// Stops background services (heartbeat/expiry/compaction) before the
+    /// registry and engine they depend on are torn down.
+    ~EngineServer();
     struct R { bool success=false; uint64_t session_id=0,file_id=0,logical_file_id=0,version_number=0,resolved_chunk_size=0; EncryptionAlgo encryption=EncryptionAlgo::NONE; std::string error; };
     R open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts=0,uint32_t ec=0,uint32_t fed=0);
     struct WR { bool success=false,already_confirmed=false; std::string error; };

@@ -2,11 +2,13 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/security/server_credentials.h>
 
 #include "engine.grpc.pb.h"
+#include "cluster/cluster_node.h"
 #include "config/config.h"
 #include "engine/engine_service.h"
 #include "metrics/metrics.h"
@@ -297,39 +299,89 @@ private:
 
 } // namespace
 
+namespace {
+
+std::vector<std::string> split_csv(const std::string& value) {
+    std::vector<std::string> parts;
+    size_t start = 0;
+    while (start <= value.size()) {
+        auto comma = value.find(',', start);
+        auto end = (comma == std::string::npos) ? value.size() : comma;
+        auto token = value.substr(start, end - start);
+        if (!token.empty()) parts.push_back(token);
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return parts;
+}
+
+}  // namespace
+
 int main(int argc, char* argv[]) {
     (void)argc; (void)argv;
 
     std::cout << "=== FILE Group Engine (Phase 1 + gRPC) ===\n";
 
-    // ── Build config programmatically (TOML parser is incomplete for arrays) ──
+    // ── Build config (TOML parser is incomplete for arrays, so allow env) ──
     filegroup::ClusterConfig config;
 
     config.tls.ca_cert_file = "certs/ca.crt";
     config.tls.engine_cert_file = "certs/engine.crt";
     config.tls.engine_key_file = "certs/engine.key";
 
-    filegroup::RegistryNodeConfig reg;
-    reg.id = 1;
-    reg.address = "localhost:50051";
-    reg.cert_file = "certs/ca.crt";
-    reg.key_file = "certs/engine.key";
-    config.registry_nodes.push_back(reg);
+    const char* node_id_env = std::getenv("FILEGROUP_NODE_ID");
+    const char* reg_nodes_env = std::getenv("FILEGROUP_REGISTRY_NODES");
+    const char* sto_nodes_env = std::getenv("FILEGROUP_STORAGE_NODES");
+    uint16_t node_id = node_id_env ? static_cast<uint16_t>(std::atoi(node_id_env)) : 0;
+    const bool cluster_mode = node_id != 0 && reg_nodes_env && sto_nodes_env;
 
-    filegroup::StorageNodeConfig storage;
-    storage.node_id = 1;
-    storage.address = "localhost:5001";
-    storage.role = filegroup::NodeRole::ORIGIN;
-    storage.cert_file = "certs/engine.crt";
-    storage.key_file = "certs/engine.key";
-    config.storage_nodes.push_back(storage);
+    if (cluster_mode) {
+        // Format: "1=node1:50051,2=node2:50051,3=node3:50051"
+        for (const auto& entry : split_csv(reg_nodes_env)) {
+            auto eq = entry.find('=');
+            if (eq == std::string::npos) continue;
+            filegroup::RegistryNodeConfig rn;
+            rn.id = static_cast<uint16_t>(std::atoi(entry.substr(0, eq).c_str()));
+            rn.address = entry.substr(eq + 1);
+            rn.cert_file = "certs/ca.crt";
+            config.registry_nodes.push_back(rn);
+        }
+        // Format: "1=node1:5001,2=node2:5001,3=node3:5001"
+        for (const auto& entry : split_csv(sto_nodes_env)) {
+            auto eq = entry.find('=');
+            if (eq == std::string::npos) continue;
+            filegroup::StorageNodeConfig sn;
+            sn.node_id = static_cast<uint16_t>(std::atoi(entry.substr(0, eq).c_str()));
+            sn.address = entry.substr(eq + 1);
+            sn.role = filegroup::NodeRole::ORIGIN;
+            sn.cert_file = "certs/engine.crt";
+            config.storage_nodes.push_back(sn);
+        }
+    } else {
+        filegroup::RegistryNodeConfig reg;
+        reg.id = 1;
+        reg.address = "localhost:50051";
+        reg.cert_file = "certs/ca.crt";
+        reg.key_file = "certs/engine.key";
+        config.registry_nodes.push_back(reg);
+
+        filegroup::StorageNodeConfig storage;
+        storage.node_id = 1;
+        storage.address = "localhost:5001";
+        storage.role = filegroup::NodeRole::ORIGIN;
+        storage.cert_file = "certs/engine.crt";
+        storage.key_file = "certs/engine.key";
+        config.storage_nodes.push_back(storage);
+    }
 
     filegroup::FileGroupConfig group;
     group.group_id = 1;
     group.name = "default";
     group.chunk_size = 65536;
     group.min_chunk_bytes = 1024;
-    group.replication_factor = 1;
+    const char* repl_env = std::getenv("FILEGROUP_REPLICATION");
+    group.replication_factor = static_cast<uint8_t>(
+        repl_env ? std::atoi(repl_env) : (cluster_mode ? 3 : 1));
     group.max_versions = 5;
     group.file_expires_in_days = 0;
     group.expiry_granularity = filegroup::ExpiryGranularity::UNSET;
@@ -352,11 +404,25 @@ int main(int argc, char* argv[]) {
 
     // ── Start engine ─────────────────────────────────────────────────────
     const char* data_dir = std::getenv("FILEGROUP_DATA_DIR");
-    filegroup::EngineServer engine_server(config, &metrics, data_dir ? data_dir : "/var/lib/filegroup");
+    const std::string data_root = data_dir ? data_dir : "/var/lib/filegroup";
+
+    std::unique_ptr<filegroup::ClusterNode> cluster;
+    std::unique_ptr<filegroup::EngineServer> engine_server;
+    filegroup::EngineServer* engine = nullptr;
+
+    if (cluster_mode) {
+        std::cout << "Cluster mode: node " << node_id << " of "
+                  << config.registry_nodes.size() << " registry nodes\n";
+        cluster = std::make_unique<filegroup::ClusterNode>(config, &metrics, data_root, node_id);
+        engine = &cluster->server();
+    } else {
+        engine_server = std::make_unique<filegroup::EngineServer>(config, &metrics, data_root);
+        engine = engine_server.get();
+    }
 
     // ── Start gRPC server ────────────────────────────────────────────────
     std::string server_address("0.0.0.0:8443");
-    EngineGrpcService service(engine_server);
+    EngineGrpcService service(*engine);
 
     grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());

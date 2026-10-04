@@ -1,13 +1,12 @@
-.PHONY: up down clean rebuild
+.PHONY: up down clean rebuild verify dash
 
-# Full rebuild — always uses --no-cache to avoid Docker layer caching issues
+# Build and start the 3-node cluster (node1 :8443, node2 :8444, node3 :8445)
 up:
 	docker compose down -v
-	docker compose build --no-cache engine
-	docker compose up -d
-	@echo "Engine running on :8443, metrics on :9090"
+	docker compose up -d --build
+	@echo "Cluster up — node1 :8443, node2 :8444, node3 :8445"
 
-# Stop without destroying volume
+# Stop without destroying volumes
 down:
 	docker compose down
 
@@ -15,10 +14,15 @@ down:
 clean:
 	docker compose down -v
 
-# Rebuild engine only (keeps volume)
+# Rebuild images (keeps volumes)
 rebuild:
-	docker compose build --no-cache engine
+	docker compose build --no-cache
 	docker compose up -d
+
+# Upload to node1 and read the file back from node2 — verifies that metadata
+# and chunks replicated across the cluster.
+verify:
+	cd ../clients/csharp && dotnet run --project DemoLocal -- http://localhost:8443 http://localhost:8444
 
 # Dashboard
 dash:

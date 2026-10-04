@@ -15,6 +15,15 @@ RegistryServer::RegistryServer(uint32_t node_id,
                                const std::vector<uint32_t>& peer_ids,
                                const std::string& raft_log_path,
                                uint32_t group_id)
+    : RegistryServer(node_id, peer_ids, raft_log_path, group_id, nullptr)
+{
+}
+
+RegistryServer::RegistryServer(uint32_t node_id,
+                               const std::vector<uint32_t>& peer_ids,
+                               const std::string& raft_log_path,
+                               uint32_t group_id,
+                               std::unique_ptr<RaftTransport> transport)
     : node_id_(node_id), group_id_(group_id)
 {
     RaftConfig raft_config;
@@ -23,8 +32,12 @@ RegistryServer::RegistryServer(uint32_t node_id,
     raft_config.log_path = raft_log_path;
     raft_config.group_id = group_id;
 
-    // In-process transport (will be registered after all nodes are created)
-    transport_ = std::make_unique<InProcessRaftTransport>();
+    // Use the supplied transport, or fall back to in-process (Phase 1 default).
+    if (transport) {
+        transport_ = std::move(transport);
+    } else {
+        transport_ = std::make_unique<InProcessRaftTransport>();
+    }
 
     // Apply callback: when Raft commits an entry, apply it to the file index
     auto apply_fn = [this](uint32_t entry_type, const void* body, uint16_t body_length, uint64_t lsn) {
@@ -156,41 +169,81 @@ RegistryClient::RegistryClient(std::vector<RegistryServer*> servers)
 {
 }
 
+void RegistryClient::set_append_forwarder(AppendForwarder forwarder) {
+    append_forwarder_ = std::move(forwarder);
+}
+
+void RegistryClient::set_leader_resolver(LeaderResolver resolver) {
+    leader_resolver_ = std::move(resolver);
+}
+
 RegistryServer* RegistryClient::find_leader() {
     for (auto* server : servers_) {
-        if (server->is_leader()) {
+        if (server && server->is_leader()) {
             return server;
         }
     }
     return nullptr;
 }
 
+RegistryServer* RegistryClient::local_read_target() {
+    if (servers_.empty()) return nullptr;
+    if (auto* leader = find_leader()) return leader;
+    // Not the leader — serve reads from our local (replicated) state machine.
+    return servers_.front();
+}
+
+void RegistryClient::wait_for_local_apply(uint64_t lsn) {
+    RegistryServer* local = servers_.empty() ? nullptr : servers_.front();
+    if (!local) return;
+    auto& raft = local->raft_node();
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (raft.last_applied() >= lsn) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+}
+
 uint64_t RegistryClient::next_logical_file_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_logical_file_id() : 1000;
+    auto* target = local_read_target();
+    return target ? target->file_index().next_logical_file_id() : 1000;
 }
 
 uint64_t RegistryClient::next_file_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_file_id() : 1000;
+    auto* target = local_read_target();
+    return target ? target->file_index().next_file_id() : 1000;
 }
 
 uint64_t RegistryClient::next_session_id() {
-    auto* leader = find_leader();
-    return leader ? leader->file_index().next_session_id() : 1;
+    auto* target = local_read_target();
+    return target ? target->file_index().next_session_id() : 1;
 }
 
 std::pair<bool, uint64_t> RegistryClient::append_entry(
     uint32_t entry_type, const void* body, uint16_t body_length)
 {
-    // Try each server until we find the leader
+    // Local leader accepts the proposal directly.
     for (auto* server : servers_) {
-        if (server->is_leader()) {
+        if (server && server->is_leader()) {
             return server->raft_node().propose(entry_type, body, body_length);
         }
     }
-    // No leader found — try all servers anyway (one might become leader)
+
+    // Cluster mode: forward the proposal to the remote leader over gRPC.
+    if (append_forwarder_) {
+        uint32_t leader = leader_resolver_ ? leader_resolver_() : 0;
+        if (leader != 0) {
+            auto [ok, lsn] = append_forwarder_(leader, entry_type, body, body_length);
+            if (ok) {
+                wait_for_local_apply(lsn);
+                return {true, lsn};
+            }
+        }
+    }
+
+    // Fallback: try all local servers anyway (one might become leader).
     for (auto* server : servers_) {
+        if (!server) continue;
         auto [success, lsn] = server->raft_node().propose(entry_type, body, body_length);
         if (success) return {true, lsn};
     }
@@ -198,43 +251,43 @@ std::pair<bool, uint64_t> RegistryClient::append_entry(
 }
 
 const LogicalFileEntry* RegistryClient::get_file(uint64_t logical_file_id) {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().get_file(logical_file_id);
+    if (auto* target = local_read_target()) {
+        return target->file_index().get_file(logical_file_id);
     }
     return nullptr;
 }
 
 const VersionEntry* RegistryClient::get_latest_complete(uint64_t logical_file_id) {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().get_latest_complete(logical_file_id);
+    if (auto* target = local_read_target()) {
+        return target->file_index().get_latest_complete(logical_file_id);
     }
     return nullptr;
 }
 
 const VersionEntry* RegistryClient::get_version(uint64_t logical_file_id, uint32_t version) {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().get_version(logical_file_id, version);
+    if (auto* target = local_read_target()) {
+        return target->file_index().get_version(logical_file_id, version);
     }
     return nullptr;
 }
 
 std::vector<LogicalFileEntry> RegistryClient::list_files(uint16_t table_id, uint32_t group_id) {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().list_files(table_id, group_id);
+    if (auto* target = local_read_target()) {
+        return target->file_index().list_files(table_id, group_id);
     }
     return {};
 }
 
 std::vector<LogicalFileEntry> RegistryClient::all_files() {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().all_files();
+    if (auto* target = local_read_target()) {
+        return target->file_index().all_files();
     }
     return {};
 }
 
 std::vector<uint32_t> RegistryClient::get_confirmed_chunks(uint64_t session_id) {
-    if (auto* leader = find_leader()) {
-        return leader->file_index().get_confirmed_chunks(session_id);
+    if (auto* target = local_read_target()) {
+        return target->file_index().get_confirmed_chunks(session_id);
     }
     return {};
 }

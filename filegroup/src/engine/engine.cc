@@ -7,7 +7,11 @@
 #include <dirent.h>
 #include <iostream>
 namespace filegroup {
-Engine::Engine(const ClusterConfig& c, RegistryClient* r, const std::vector<StorageClient*>& sn):config_(c),registry_(r),storage_nodes_(sn){uint16_t n=1;for(auto* s:sn)if(s)node_map_[n++]=s;}
+Engine::Engine(const ClusterConfig& c, RegistryClient* r, const std::vector<StorageClient*>& sn):config_(c),registry_(r),storage_nodes_(sn){
+ for(size_t i=0;i<sn.size();i++){if(!sn[i])continue;
+  uint16_t id=(i<config_.storage_nodes.size())?config_.storage_nodes[i].node_id:(uint16_t)(i+1);
+  node_map_[id]=sn[i];}
+}
 UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64_t ts,uint32_t ec,uint32_t fed){
  auto* grp=find_group(gid); if(!grp)throw std::runtime_error("group not found");
  auto* tbl=find_table(tid);
@@ -45,7 +49,8 @@ UploadSession Engine::open_session(uint32_t gid,uint32_t tid,uint64_t lid,uint64
   auto* ef=registry_->get_file(lid);
   if(ef) vn = (uint32_t)ef->versions.size() + 1;
  }
- std::vector<uint16_t> hn; for(uint16_t i=1;i<=storage_nodes_.size();i++)hn.push_back(i);
+ std::vector<uint16_t> hn; for(size_t i=0;i<storage_nodes_.size();i++){if(!storage_nodes_[i])continue;
+  hn.push_back((i<config_.storage_nodes.size())?config_.storage_nodes[i].node_id:(uint16_t)(i+1));}
  uint32_t cc=ec; if(cc==0&&ts>0)cc=(uint32_t)((ts+cs-1)/cs);
  auto as=assign_chunks(fid,std::max(1u,cc),rf,hn);
  UploadSession s; s.session_id=sid; s.file_id=fid; s.logical_file_id=lid;
@@ -68,9 +73,9 @@ bool Engine::write_chunk(uint64_t sid,uint32_t ci,const uint8_t* d,uint64_t sz){
  if(s->state!=VersionState::UPLOADING)return false; if(s->confirmed_chunks.count(ci))return true;
  s->last_activity_us=now_us(); uint32_t csum=crc32c(d,sz);
  const ChunkAssignment* a=nullptr;for(auto&x:s->chunk_assignments)if(x.chunk_index==ci){a=&x;break;} if(!a)return false;
- auto* p=get_storage_node(a->primary_node_id);if(!p)return false;
+ auto* p=get_storage_node(a->primary_node_id);if(!p){std::cerr << "[write_chunk] no storage node " << a->primary_node_id << std::endl;return false;}
  auto r=p->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);
- if(!r.success)return false;
+ if(!r.success){std::cerr << "[write_chunk] store failed on node " << a->primary_node_id << ": " << r.error << std::endl;return false;}
  s->total_bytes+=sz;
  for(auto rid:a->replica_node_ids){auto*rep=get_storage_node(rid);if(rep)rep->store_chunk(s->file_id,ci,s->group_id,s->table_id,d,sz,csum,false,s->resolved_expires_at,s->resolved_expires_at>0?ExpiryGranularity::DAY:ExpiryGranularity::UNSET);}
  ChunkConfirmedEntry ce;ce.session_id=sid;ce.file_id=s->file_id;ce.chunk_index=ci;ce.chunk_size_actual=sz;ce.chunk_checksum=csum;ce.replica_count=s->resolved_replication;ce.segment_offset=r.offset;strncpy(ce.segment_file,r.segment_file.c_str(),sizeof(ce.segment_file)-1);ce.segment_file[sizeof(ce.segment_file)-1]=0;
@@ -235,8 +240,9 @@ void Engine::rebuild_chunk_locations(){
  // Scan all storage node data dirs for segment files and rebuild chunk_locs_
  // This is needed after restart because chunk_locs_ is in-memory only.
  for(auto* sc:storage_nodes_){
-  if(!sc||!sc->ping())continue;
+  if(!sc||!sc->is_local()||!sc->ping())continue;
   auto* server=sc->server();
+  if(!server)continue;
   auto dir=server->data_dir();
   DIR* dp=opendir(dir.c_str());
   if(!dp)continue;
