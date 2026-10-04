@@ -2,12 +2,22 @@
 
 High-performance C++ distributed file storage system with Raft-replicated metadata, chunk-based replication, AES-256-GCM encryption, and page-based expiry.
 
-## Quick Start (Docker)
+## Quick Start (Docker — 3-node cluster)
 
 ```bash
-docker compose up -d                    # Start engine on :8443
-cd ../clients/csharp && dotnet run --project DemoLocal   # Run demo
+make up                                 # Build + start node1 :8443, node2 :8444, node3 :8445
+make verify                             # Upload to node1, read back from node2 (proves replication)
 cd ../clients/csharp && dotnet run --project WebDashboard # Web UI at :5001
+```
+
+Each node runs its own registry (Raft) node and storage node. Raft metadata
+replication and chunk replication travel over gRPC on the internal Docker
+network. `DemoLocal` takes an optional second address to read from a different
+node:
+
+```bash
+cd ../clients/csharp
+dotnet run --project DemoLocal -- http://localhost:8443 http://localhost:8444
 ```
 
 ## Quick Start (Native)
@@ -18,14 +28,20 @@ mkdir build && cd build && cmake .. && make -j$(nproc)
 cd ../../clients/csharp && dotnet run --project DemoLocal
 ```
 
-## Build
+## Build & Test (C++)
 
 ```bash
-mkdir build && cd build
+mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
-make test                               # 18 C++ tests
+ctest --output-on-failure               # 20 tests (unit + integration)
+ctest -R ClusterReplication --output-on-failure   # Raft + storage over gRPC
+ctest -R ClusterEngine --output-on-failure        # 3-node upload → cross-node read
 ```
+
+The `ClusterReplication`/`ClusterEngine` tests start real gRPC servers on
+loopback ports and assert that a manifest entry and a chunk replicate to every
+node. No Docker required.
 
 ## C# Client
 
@@ -75,6 +91,7 @@ filegroup/
 ├── proto/                  # gRPC service definitions
 ├── src/
 │   ├── common/             # Types, CRC32C, clock
+│   ├── cluster/            # Multi-node cluster orchestration (ClusterNode)
 │   ├── config/             # Configuration loader and resolver
 │   ├── file_header/        # 64-byte binary file header
 │   ├── manifest/           # Manifest format, writer, reader, file index
@@ -96,21 +113,19 @@ filegroup/
     └── integration/        # Integration tests
 ```
 
-## Phase 1 Status
+## Status
 
-- [ ] Step 1: Common types and CRC32C ← **CURRENT**
-- [ ] Step 2: Static config loader
-- [ ] Step 3: TLS certificate generation
-- [ ] Step 4: File header
-- [ ] Step 5: Manifest format
-- [ ] Step 6: File index
-- [ ] Step 7: Registry Raft
-- [ ] Step 8: Storage node gRPC
-- [ ] ... (22 steps total)
+Steps 1–18, 20–22 are complete (see `../todo/COMPLETED.md`), including
+multi-node Raft and chunk replication over gRPC. Step 19 (background
+scrubbing) and production hardening (mTLS for cluster RPCs, re-replication,
+structured logging) remain — see `../todo/REMAINING.md`.
 
 ## Known Limitations (Phase 1)
 
-- No Phase 2+ features (edge nodes, LRU cache, streaming reads, re-replication)
+- Multi-node Raft and chunk replication work (over gRPC), but **automatic
+  re-replication** after a node failure is not implemented yet
+- No Phase 2+ features (edge nodes, LRU cache)
+- Cluster-internal RPCs are insecure (mTLS wiring is still pending)
 - Raft log not compacted (manifest replay handles recovery)
 - No corrupt chunk repair (detect and log only)
 - No projection/rendition logic

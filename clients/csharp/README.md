@@ -13,6 +13,28 @@ dotnet run --project DemoLocal           # Docker/local (no TLS)
 dotnet run --project Demo                # Production (mTLS + certs)
 ```
 
+### Verify replication across a cluster
+
+With the 3-node Docker cluster running (`cd ../../filegroup && make up`):
+
+```bash
+# Upload to node1 and read the file back from node2 (a different node)
+dotnet run --project DemoLocal -- http://localhost:8443 http://localhost:8444
+```
+
+A result of `match: True` means both Raft metadata and chunk replication are
+working. `DemoLocal` creates the default table if it is missing, and retries the
+cross-node read briefly while the follower catches up with the Raft commit.
+
+## Testing
+
+```bash
+dotnet test FileGroup.slnx               # 12 C# client tests
+```
+
+The C++ unit/integration tests (including the gRPC cluster tests) live in
+`../../filegroup/tests/` and run via `ctest` from `filegroup/build`.
+
 ## Web Dashboard
 
 A read-only browser dashboard for exploring files and versions.

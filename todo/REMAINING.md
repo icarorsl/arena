@@ -21,6 +21,6 @@
 |---|---|
 | TOML parser completion | Handle `[[array_of_tables]]` syntax properly |
 | Real encryption key management | `KeyManager` class, load 32-byte key files |
-| Multi-node Raft cluster | Currently single-node only |
+| Cluster hardening | Multi-node Raft + chunk replication now work over gRPC (see `test_cluster_engine`). Remaining: mTLS for cluster-internal RPCs, automatic re-replication on node failure |
 | Proper logging | Structured JSON logging (currently `std::cout`/`std::cerr`) |
 | Windows build support | POSIX-only (pread/pwrite/fdatasync) |

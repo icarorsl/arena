@@ -35,8 +35,20 @@
 | Component | Status |
 |---|---|
 | `Dockerfile` for engine | ✅ |
-| `docker-compose.yml` | ✅ |
-| `DemoLocal` connects via http:// | ✅ |
+| `docker-compose.yml` | ✅ 3-node cluster (node1 :8443, node2 :8444, node3 :8445) |
+| `DemoLocal` connects via http:// | ✅ Optional second address reads from another node |
+
+### 🆕 Multi-node cluster (Raft + chunk replication over gRPC)
+| Component | Status |
+|---|---|
+| Multi-voter Raft | ✅ `propose()` waits for majority commit + apply; 3-voter election/replication unit test (`test_raft.cc`) |
+| gRPC Raft transport | ✅ `GrpcRaftTransport` (RequestVote/AppendEntries over `registry.proto`) + `RegistryGrpcService` |
+| Leader forwarding | ✅ Registry nodes forward writes to the leader over gRPC; followers serve replicated reads |
+| gRPC storage transport | ✅ `StorageGrpcService` + `GrpcStorageClient` (chunk replication across nodes) |
+| Cluster orchestration | ✅ `ClusterNode` wires per-node registry + storage + engine; env-driven (`FILEGROUP_NODE_ID`, `FILEGROUP_REGISTRY_NODES`, `FILEGROUP_STORAGE_NODES`, `FILEGROUP_REPLICATION`) |
+| Docker cluster | ✅ `make up` builds/starts 3 nodes; `make verify` uploads to node1, reads back from node2 |
+| Reliability fixes | ✅ Config-accurate storage node IDs; local-only compaction/rescan; heartbeat first-sweep delay; `EngineServer` teardown joins background threads before registry/engine destruction |
+| Integration tests | ✅ `ClusterReplication` (Raft + storage over gRPC), `ClusterEngine` (3-node upload → cross-node read) |
 
 ### 🆕 Beyond Spec
 | Component | Status |
