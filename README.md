@@ -51,6 +51,8 @@ succeeds only if both Raft metadata and chunk replication worked.
 ## What's Left
 
 - Step 19 — background scrubbing (integrity checking) is still stubbed
+- Raft log not compacted: no snapshots, log never truncated (manifest replay
+  handles recovery)
 - Production hardening: mTLS for cluster-internal RPCs, automatic
   re-replication after a node failure, health-aware chunk placement
   (writes can fail while a storage node is down), structured logging

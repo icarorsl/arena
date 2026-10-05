@@ -397,7 +397,7 @@ Implement `src/registry/raft.h/.cc` — a minimal Raft implementation sufficient
 - Follower log catch-up on reconnect
 
 **Not required in Phase 1:**
-- Log compaction / snapshotting (manifest replay handles recovery)
+- Log compaction / snapshotting — no state-machine snapshots, log never truncated (manifest replay handles recovery)
 - Dynamic membership changes (static config)
 - Pre-vote protocol
 

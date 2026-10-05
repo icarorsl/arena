@@ -127,7 +127,7 @@ health-aware chunk placement, structured logging) remain — see
   re-replication** after a node failure is not implemented yet
 - No Phase 2+ features (edge nodes, LRU cache)
 - Cluster-internal RPCs are insecure (mTLS wiring is still pending)
-- Raft log not compacted (manifest replay handles recovery)
+- Raft log not compacted: no snapshots, log never truncated (manifest replay handles recovery)
 - No corrupt chunk repair (detect and log only)
 - No projection/rendition logic
 

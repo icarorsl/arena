@@ -48,7 +48,7 @@ history see [`todo/COMPLETED.md`](./todo/COMPLETED.md); for open work see
 | Versioning + `max_versions` enforcement | ✅ | oldest complete version auto-deleted |
 | Two-phase delete + space reclaim | ✅ | MARKED_DELETED → compaction → DELETED |
 | Manifest / file index (Raft state machine) | ✅ | replay on restart |
-| Raft log compaction | 🔜 planned | log not compacted; manifest replay handles recovery |
+| Raft log compaction | 🔜 planned | no snapshots, log never truncated; manifest replay handles recovery |
 
 ## Cluster (multi-node)
 
